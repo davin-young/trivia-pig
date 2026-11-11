@@ -34,13 +34,31 @@ Built to replace jeopardylabs.com, with a better board editor, real admin contro
   Daily Double wagers, the full Final Jeopardy reveal flow, manual score edits, and passing control.
   Skip, re-open, or mark clues used. Fix a typo mid-game. Pause, BRB or blank screen, scoreboard
   overlay, announcements, show/hide the join QR, and switch rounds.
+- **All-play clues.** Open any clue as "all-play": everyone types an answer on their phone at once,
+  the host judges each one, right answers score and wrong ones cost nothing.
+- **Auto-open buzzers.** Optionally the buzzers open by themselves after a reading time based on
+  the clue's length, with countdown light bars on the display so nobody has to guess.
+- **Reactions, awards and practice bots.** Players can send emoji reactions to the display. The
+  winner screen hands out awards (fastest buzzer, longest streak, biggest comeback and more). The
+  host can add bot players to rehearse a board alone.
 - **Players and teams.** Kick, ban, rename, reset or hide a drawing, drag onto teams, auto-balance,
   a profanity filter, and automatic seat and score recovery on reconnect.
 - **Sound.** All original audio, synthesized with the Web Audio API (no copyrighted show music),
   plus a host soundboard.
 - **Board builder.** Inline grid editing with keyboard navigation and autosave, images (drag, drop,
   or paste), video/audio/YouTube links, Daily Doubles, CSV/JSON import, JSON export, drag to
-  reorder, preview, version history, share links, and templates.
+  reorder, preview, version history, share links, and templates. Two people editing the same board
+  (or a typo fix made mid-game) never silently overwrite each other: the second save gets a
+  conflict prompt.
+- **Try it without an account.** `/try` opens the builder with no sign-in. The draft is kept in
+  the browser and moves into the account when the person signs in.
+- **Public gallery.** Owners can list a copyable board at `/gallery`, where anyone can search,
+  preview and copy it.
+- **AI board drafts (optional).** With `ANTHROPIC_API_KEY` set, hosts can describe a topic and get
+  a full editable draft from Claude. Drafts are rate limited per host and always need a human
+  fact-check before game night.
+- **Season leaderboard.** Wins, podiums, totals and averages across finished games, by player or
+  team name, for the last 30/90/365 days or all time.
 - **Dashboard.** Search, tags, folders, archive, trash and restore. Active games with resume, game
   history, results with CSV export, and rematch.
 - **Accounts.** **Keycloak/OIDC** single sign-on and/or email + password + magic link. Co-host and
@@ -116,6 +134,7 @@ All settings are environment variables. See [`.env.example`](.env.example).
 | `LOCAL_AUTH` | `false` makes Keycloak the only sign-in method |
 | `ALLOW_SIGNUP`, `ADMIN_EMAILS` | Local accounts. The first account is always admin |
 | `SMTP_URL`, `MAIL_FROM` | Magic links and invites. Without SMTP, links are printed to the log |
+| `ANTHROPIC_API_KEY` | Optional. Enables "Draft with AI" (`ANTHROPIC_MODEL`, `AI_DRAFTS_PER_HOUR` tune it) |
 | `STORAGE_DRIVER` | `local` (`UPLOAD_DIR`) or `s3` (`S3_ENDPOINT`, `S3_BUCKET`, keys, `S3_FORCE_PATH_STYLE`) |
 
 ## Deploy

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { Prisma } from "@prisma/client";
 import { AppNav } from "@/components/AppNav";
-import { ActionButton, NewBoardButton, StartGameButton } from "@/components/dashboard/actions";
+import { ActionButton, AiDraftButton, NewBoardButton, StartGameButton } from "@/components/dashboard/actions";
 import { prisma } from "@/server/db";
 import { requireUser } from "@/server/session";
 import { visibleOwnerIds } from "@/server/access";
@@ -136,7 +136,8 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
                 </Link>
               ))}
             </div>
-            <div className="ml-auto">
+            <div className="ml-auto flex gap-2">
+              <AiDraftButton />
               <NewBoardButton />
             </div>
           </div>

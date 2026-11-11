@@ -71,6 +71,20 @@ export const env = {
   get trustProxy() {
     return process.env.TRUST_PROXY !== "false";
   },
+  // ---- AI board drafts (optional) ----
+  get anthropicApiKey() {
+    return process.env.ANTHROPIC_API_KEY ?? "";
+  },
+  get aiEnabled() {
+    return !!process.env.ANTHROPIC_API_KEY;
+  },
+  get anthropicModel() {
+    return process.env.ANTHROPIC_MODEL || "claude-opus-5-5";
+  },
+  /** Per-host cap, since each draft is billed to the server owner. */
+  get aiDraftsPerHour() {
+    return Number(process.env.AI_DRAFTS_PER_HOUR ?? 10);
+  },
   get s3() {
     return {
       endpoint: process.env.S3_ENDPOINT || undefined,

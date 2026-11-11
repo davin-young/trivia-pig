@@ -185,6 +185,38 @@ async function main() {
   assert(shown.clue!.allPlay!.typed[cara] === "my guess" && shown.scores[cara] === 200, "judged answer is shown and scored");
   assert(shown.clue!.answer === null, "correct answer still hidden until revealed");
   for (const c of [h2, d2, q1]) c.s.close();
+
+  // ---- boards: concurrent-edit protection, public gallery, leaderboard, guest builder ----
+  const made = await (await api("/api/boards", { method: "POST", cookie, body: JSON.stringify({ title: `Smoke gallery ${game.code}`, template: "quick" }) })).json();
+  const loaded = await (await api(`/api/boards/${made.id}`, { cookie })).json();
+  const save1 = await api(`/api/boards/${made.id}`, { method: "PUT", cookie, body: JSON.stringify({ baseRev: loaded.rev, description: "first editor" }) });
+  assert(save1.ok && (await save1.json()).rev === loaded.rev + 1, "saving with the current revision works and bumps it");
+  const stale = await api(`/api/boards/${made.id}`, { method: "PUT", cookie, body: JSON.stringify({ baseRev: loaded.rev, description: "second editor, stale" }) });
+  assert(stale.status === 409 && (await stale.json()).conflict === true, "a stale editor gets a conflict instead of overwriting");
+  assert((await (await api(`/api/boards/${made.id}`, { cookie })).json()).description === "first editor", "the earlier save was not overwritten");
+
+  const galleryBefore = await (await api("/gallery")).text();
+  assert(!galleryBefore.includes(`Smoke gallery ${game.code}`), "unlisted boards are not in the gallery");
+  const viewOnly = await (await api(`/api/boards/${made.id}/share`, { method: "POST", cookie, body: JSON.stringify({ mode: "VIEW", listed: true }) })).json();
+  assert(viewOnly.listed === false, "view-only boards cannot be listed");
+  const listed = await (await api(`/api/boards/${made.id}/share`, { method: "POST", cookie, body: JSON.stringify({ mode: "COPY", listed: true }) })).json();
+  assert(listed.listed === true, "owner lists a board in the gallery");
+  const galleryAfter = await api("/gallery");
+  assert(galleryAfter.ok && (await galleryAfter.text()).includes(`Smoke gallery ${game.code}`), "listed board appears in the public gallery without signing in");
+  await api(`/api/boards/${made.id}/share`, { method: "POST", cookie, body: JSON.stringify({ mode: "OFF" }) });
+  assert(!(await (await api("/gallery")).text()).includes(`Smoke gallery ${game.code}`), "turning sharing off removes it from the gallery");
+  await api(`/api/boards/${made.id}`, { method: "PATCH", cookie, body: JSON.stringify({ action: "trash" }) });
+
+  const lb = await api("/dashboard/leaderboard?season=all", { cookie });
+  assert(lb.ok && (await lb.text()).includes("Leaderboard"), "leaderboard page renders");
+  assert((await api("/dashboard/leaderboard")).status !== 200, "leaderboard needs a sign-in");
+  const tryPage = await api("/try");
+  assert(tryPage.ok && (await tryPage.text()).includes("Sign in to save"), "guest board builder opens without an account");
+  assert((await api("/api/boards", { method: "POST", body: JSON.stringify({ title: "x" }) })).status === 401, "guests cannot save boards on the server");
+  const ai = await api("/api/boards/generate", { cookie });
+  assert(ai.ok && typeof (await ai.json()).enabled === "boolean", "AI draft availability is reported");
+  const health = await (await api("/readyz")).json();
+  assert(health.ok === true && health.db === true, "readiness endpoint reports healthy");
   console.log("\nAll smoke checks passed.");
   process.exit(0);
 }
