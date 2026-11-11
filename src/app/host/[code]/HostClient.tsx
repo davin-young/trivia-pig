@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useState } from "react";
 import Link from "next/link";
 import { useGame } from "@/client/useGame";
+import { useWakeLock } from "@/client/useWakeLock";
 import type { GameView } from "@/engine/views";
 import type { HostIntent, PresenceView } from "@/shared/protocol";
 import { ConnBanner, StatusDot, contestants, formatScore } from "@/components/game";
@@ -35,6 +36,7 @@ export default function HostClient({ code, gameId, role }: { code: string; gameI
     onRedirect: (next) => window.location.replace(`/host/${next}`),
   });
   const [panel, setPanel] = useState<Panel>(null);
+  useWakeLock();
   const [mobileTab, setMobileTab] = useState<"game" | "scores">("game");
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 

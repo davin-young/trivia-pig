@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import confetti from "canvas-confetti";
 import { useGame } from "@/client/useGame";
 import { sound } from "@/client/sound";
+import { useWakeLock } from "@/client/useWakeLock";
 import type { GameView } from "@/engine/views";
 import type { FxEvent } from "@/shared/protocol";
 import { Ink } from "@/components/Ink";
@@ -24,6 +25,7 @@ import {
 
 export default function DisplayClient({ code }: { code: string }) {
   const [soundOn, setSoundOn] = useState(false);
+  useWakeLock();
   const viewRef = useRef<GameView | null>(null);
 
   const onFx = (fx: FxEvent) => {

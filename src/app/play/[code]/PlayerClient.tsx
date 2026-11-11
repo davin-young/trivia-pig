@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { getPlayerToken, setPlayerToken, clearPlayerToken, useGame } from "@/client/useGame";
 import { sound } from "@/client/sound";
+import { useWakeLock } from "@/client/useWakeLock";
 import { DrawingPad } from "@/components/DrawingPad";
 import { Ink } from "@/components/Ink";
 import { ConnBanner, MediaView, StatusDot, TimerBar, contestantName, formatScore, playerName, useCountdown } from "@/components/game";
@@ -12,6 +13,7 @@ import { FINAL_CANVAS, NAME_CANVAS, isEmptyDrawing, type Drawing } from "@/share
 
 export default function PlayerClient({ code }: { code: string }) {
   const [kicked, setKicked] = useState<string | null>(null);
+  useWakeLock();
   const [flash, setFlash] = useState<string | null>(null);
   const { view, status, error, emit, now } = useGame({
     role: "player",
