@@ -1,0 +1,48 @@
+{
+  "realm": "trivia",
+  "displayName": "Trivia Pig",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": true,
+  "registrationEmailAsUsername": true,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "rememberMe": true,
+  "verifyEmail": false,
+  "bruteForceProtected": true,
+  "roles": {
+    "realm": [
+      { "name": "trivia-admin", "description": "Super-admin in Trivia Pig (manage users and media)" },
+      { "name": "trivia-host", "description": "May sign in to build boards and host games" },
+      {
+        "name": "default-roles-trivia",
+        "description": "Granted to every new user",
+        "composite": true,
+        "composites": { "realm": ["offline_access", "uma_authorization", "trivia-host"] }
+      }
+    ]
+  },
+  "defaultRole": { "name": "default-roles-trivia" },
+  "clients": [
+    {
+      "clientId": "trivia-pig",
+      "name": "Trivia Pig",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${TRIVIA_CLIENT_SECRET}",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": ["${TRIVIA_APP_URL}/api/auth/oidc/callback"],
+      "webOrigins": ["${TRIVIA_APP_URL}"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "${TRIVIA_APP_URL}/login"
+      }
+    }
+  ]
+}

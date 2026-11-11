@@ -33,6 +33,7 @@
     "nodemailer": "^10.5.0",
     "openid-client": "^6.8.9",
     "perfect-freehand": "^1.2.3",
+    "prisma": "^6.19.3",
     "qrcode": "^1.5.4",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
@@ -54,7 +55,6 @@
     "eslint": "^9.39.5",
     "eslint-config-next": "^16.4.6",
     "postcss": "^8.5.32",
-    "prisma": "^6.19.3",
     "tailwindcss": "^4.3.5",
     "typescript": "5.9",
     "vitest": "^5.1.0"

@@ -1,0 +1,14 @@
+node_modules
+.next
+dist
+uploads
+.git
+.github
+.env
+.env.*
+!.env.example
+deploy/homelab/.env
+deploy/homelab/data
+coverage
+*.tsbuildinfo
+npm-debug.log*

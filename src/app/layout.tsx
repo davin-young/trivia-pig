@@ -10,6 +10,7 @@ export const metadata: Metadata = {
   title: { default: "Trivia Pig", template: "%s · Trivia Pig" },
   description: "Self-hosted, real-time quiz-show game: big-screen display, iPad host controls, and phone buzzers.",
   applicationName: "Trivia Pig",
+  icons: { icon: "/favicon.svg" },
 };
 
 export const viewport: Viewport = {
