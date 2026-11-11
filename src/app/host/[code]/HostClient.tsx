@@ -80,6 +80,11 @@ export default function HostClient({ code, gameId, role }: { code: string; gameI
   return (
     <Ctx.Provider value={ctx}>
       <ConnBanner status={status} error={error} />
+      {presence?.saveFailing && (
+        <div className="sticky top-0 z-40 bg-red-700 px-4 py-2 text-center text-sm font-semibold" role="alert">
+          ⚠ This game is not being saved right now (database problem). Keep playing: it retries automatically, but a server restart before it recovers would lose recent steps.
+        </div>
+      )}
       <main className="flex h-dvh flex-col overflow-hidden bg-ui-bg pb-[env(safe-area-inset-bottom)]">
         <TopBar onPanel={setPanel} status={status} />
         {/* Phones: toggle between game controls and scores. Tablets/laptops: side by side. */}

@@ -322,7 +322,7 @@ export class LiveGame {
     if (!found) return;
     if (text !== undefined) found.clue.text = text;
     if (answer !== undefined) found.clue.answer = answer;
-    await prisma.board.update({ where: { id: this.boardId }, data: { content: parsed.data as Prisma.InputJsonValue } });
+    await prisma.board.update({ where: { id: this.boardId }, data: { content: parsed.data as Prisma.InputJsonValue, rev: { increment: 1 } } });
   }
 
   private async saveFinalEditToBoard(edit: { category?: string; text?: string; answer?: string }) {
@@ -331,7 +331,7 @@ export class LiveGame {
     const parsed = board && boardContentSchema.safeParse(board.content);
     if (!parsed || !parsed.success || !parsed.data.final) return;
     Object.assign(parsed.data.final, Object.fromEntries(Object.entries(edit).filter(([, v]) => v !== undefined)));
-    await prisma.board.update({ where: { id: this.boardId }, data: { content: parsed.data as Prisma.InputJsonValue } });
+    await prisma.board.update({ where: { id: this.boardId }, data: { content: parsed.data as Prisma.InputJsonValue, rev: { increment: 1 } } });
   }
 
   // ------------------------------------------------------------ broadcasting
@@ -442,6 +442,7 @@ export class LiveGame {
       displays,
       hosts: [...hostCounts].map(([role, count]) => ({ role, count })),
       players,
+      saveFailing: this.saveFailures >= 2,
     };
   }
 
@@ -485,7 +486,9 @@ export class LiveGame {
       .then(() => prisma.game.update({ where: { id: this.id }, data }))
       .then(() => {
         if (this.saveFailures) console.log(`[game ${this.code}] save recovered after ${this.saveFailures} failed attempt(s)`);
+        const wasFailing = this.saveFailures >= 2;
         this.saveFailures = 0;
+        if (wasFailing) this.broadcastPresence();
       })
       .catch((err) => {
         // Database hiccup: keep the game running from memory and keep retrying
@@ -493,6 +496,8 @@ export class LiveGame {
         this.saveFailures++;
         console.error(`[game ${this.code}] save failed (attempt ${this.saveFailures})`, err instanceof Error ? err.message : err);
         this.dirty = true;
+        // Tell the host once it is clearly not a blip, so they are not surprised later.
+        if (this.saveFailures === 2) this.broadcastPresence();
         if (!this.disposed) this.scheduleSave(Math.min(15_000, 1000 * 2 ** Math.min(this.saveFailures - 1, 4)));
       });
     return this.saving;

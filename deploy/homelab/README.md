@@ -97,7 +97,7 @@ The stack is built to come back by itself. You should not need to touch it.
 | App crashes or is OOM-killed | Docker restarts it. Phones, the TV and the host reconnect on their own within a few seconds, and the game continues from the last saved step (every action is saved within about 0.3 s). |
 | App hangs | A watchdog inside the app exits after 45 s of a frozen event loop, and Docker restarts it. |
 | Host reboot / power cut | All services start again on boot (`restart: unless-stopped`; make sure Docker itself starts on boot: `sudo systemctl enable docker`). The app waits for Postgres and retries migrations, so start order doesn't matter. |
-| Postgres restarts or is briefly unreachable | Games keep running from memory. Saves retry with backoff until the database is back, and nothing is evicted from memory while unsaved. |
+| Postgres restarts or is briefly unreachable | Games keep running from memory. Saves retry with backoff until the database is back, and nothing is evicted from memory while unsaved. If saving keeps failing, the host screen shows a red "not being saved" banner until it recovers. |
 | Internet or tunnel drops | `cloudflared` reconnects by itself. Devices show "reconnecting" and resume when it returns. |
 | A deploy goes wrong | `scripts/update.sh` waits for the new container to report healthy and prints its logs if it doesn't. |
 | Bad data or a mistake | Restore last night's backup with `scripts/restore.sh` (it saves the current database first). |

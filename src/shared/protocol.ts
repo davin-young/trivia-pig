@@ -123,6 +123,8 @@ export interface PresenceView {
   displays: number;
   hosts: { role: string; count: number }[];
   players: Record<string, PresenceStatus>;
+  /** True while the server cannot write this game to the database (hosts only see this). */
+  saveFailing?: boolean;
 }
 
 export type FxEvent = { cue: string; playerId?: string; id?: string };

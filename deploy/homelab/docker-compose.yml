@@ -78,6 +78,8 @@ services:
       POSTGRES_USER: trivia
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: trivia
+      # Emoji in names, reactions and awards need UTF-8 (this is the image default; stated so it cannot drift).
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8"
     volumes:
       - ./data/postgres:/var/lib/postgresql/data
     healthcheck:

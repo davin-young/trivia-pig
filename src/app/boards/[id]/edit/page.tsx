@@ -32,6 +32,8 @@ export default async function EditBoardPage({ params }: { params: Promise<{ id: 
           content,
           shareToken: board.shareToken,
           shareMode: board.shareMode,
+          listed: board.listed,
+          rev: board.rev,
         }}
       />
     </div>

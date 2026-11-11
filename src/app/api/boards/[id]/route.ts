@@ -11,7 +11,7 @@ export async function GET(_req: Request, ctx: Ctx) {
   if (user instanceof Response) return user;
   const board = await boardForUser((await ctx.params).id, user, "view");
   if (!board) return err("Board not found", 404);
-  return json({ ...boardSummary(board), content: board.content });
+  return json({ ...boardSummary(board), content: board.content, rev: board.rev });
 }
 
 const putBody = z.object({
@@ -20,6 +20,8 @@ const putBody = z.object({
   tags: z.array(z.string().trim().max(30)).max(20).optional(),
   folder: z.string().trim().max(80).optional(),
   content: z.unknown().optional(),
+  /** Revision the editor last loaded or saved. Omit to overwrite regardless. */
+  baseRev: z.number().int().min(0).optional(),
 });
 
 /** Autosave target. Snapshots a version at most every 10 minutes. */
@@ -47,17 +49,25 @@ export async function PUT(req: Request, ctx: Ctx) {
     }
   }
   await maybeSnapshot(board);
-  const updated = await prisma.board.update({
-    where: { id: board.id },
+  // Compare-and-swap on the revision so two editors (or a typo fix made during
+  // a live game) can never silently overwrite each other.
+  const base = parsed.data.baseRev;
+  const res = await prisma.board.updateMany({
+    where: { id: board.id, ...(base !== undefined ? { rev: base } : {}) },
     data: {
       title: parsed.data.title,
       description: parsed.data.description,
       folder: parsed.data.folder,
       tags: parsed.data.tags?.map((t) => t.toLowerCase()).filter(Boolean),
       content: content as unknown as Prisma.InputJsonValue | undefined,
+      rev: { increment: 1 },
     },
   });
-  return json({ ok: true, updatedAt: updated.updatedAt });
+  if (res.count === 0) {
+    return Response.json({ error: "This board was changed somewhere else (another tab, a co-host, or a fix made during a game).", conflict: true }, { status: 409 });
+  }
+  const updated = await prisma.board.findUnique({ where: { id: board.id }, select: { rev: true, updatedAt: true } });
+  return json({ ok: true, updatedAt: updated?.updatedAt, rev: updated?.rev });
 }
 
 const patchBody = z.object({ action: z.enum(["archive", "unarchive", "trash", "restore"]) });

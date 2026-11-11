@@ -24,6 +24,6 @@ export async function POST(_req: Request, ctx: Ctx) {
   const v = board && (await prisma.boardVersion.findFirst({ where: { id: vid, boardId: board.id } }));
   if (!board || !v) return err("Version not found", 404);
   await maybeSnapshot(board, true, "Before restore");
-  await prisma.board.update({ where: { id: board.id }, data: { title: v.title, content: v.content as Prisma.InputJsonValue } });
+  await prisma.board.update({ where: { id: board.id }, data: { title: v.title, content: v.content as Prisma.InputJsonValue, rev: { increment: 1 } } });
   return json({ ok: true });
 }

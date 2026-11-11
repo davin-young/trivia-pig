@@ -32,6 +32,17 @@ export function dbReady(ms = 2000): Promise<boolean> {
   );
 }
 
+/** Emoji in names and awards need a UTF-8 database; anything else makes saves fail. */
+export async function checkDbEncoding(): Promise<void> {
+  try {
+    const rows = await prisma.$queryRaw<{ server_encoding: string }[]>`SHOW server_encoding`;
+    const enc = rows[0]?.server_encoding;
+    if (enc && enc.toUpperCase() !== "UTF8") {
+      console.error(`[startup] WARNING: the database encoding is ${enc}, not UTF8. Games containing emoji or non-Latin names will fail to save. Recreate the database with ENCODING 'UTF8'.`);
+    }
+  } catch {}
+}
+
 /** Block startup until the database answers (the entrypoint already migrated it). */
 export async function waitForDb(attempts = 30, delayMs = 2000): Promise<boolean> {
   for (let i = 1; i <= attempts; i++) {

@@ -113,6 +113,13 @@ model Board {
   trashedAt   DateTime?
   shareToken  String?     @unique
   shareMode   ShareMode   @default(VIEW)
+  /// Listed in the public gallery (requires a share link in COPY mode).
+  listed      Boolean     @default(false)
+  listedAt    DateTime?
+  /// How many times the board was copied from its share link.
+  copies      Int         @default(0)
+  /// Content revision, bumped on every content save (detects concurrent edits).
+  rev         Int         @default(0)
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
 
@@ -120,6 +127,7 @@ model Board {
   games    Game[]
 
   @@index([ownerId, status])
+  @@index([listed, listedAt])
 }
 
 model BoardVersion {

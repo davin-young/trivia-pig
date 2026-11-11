@@ -56,6 +56,7 @@ export function boardSummary(b: Board & { owner?: { name: string; email: string 
     trashedAt: b.trashedAt,
     shareToken: b.shareToken,
     shareMode: b.shareMode,
+    listed: b.listed,
     rounds: content?.rounds?.map((r) => `${r.categories.length}×${r.values.length}`) ?? [],
     hasFinal: !!content?.final,
   };

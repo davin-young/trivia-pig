@@ -13,7 +13,7 @@ import { attachSocketServer } from "@/server/socket";
 import { getManager } from "@/server/live";
 import { env } from "@/server/env";
 import { prisma } from "@/server/db";
-import { dbReady, startJanitor, startWatchdog, waitForDb, withTimeout } from "@/server/ops";
+import { checkDbEncoding, dbReady, startJanitor, startWatchdog, waitForDb, withTimeout } from "@/server/ops";
 
 const dev = process.env.NODE_ENV !== "production";
 const port = env.port;
@@ -29,6 +29,7 @@ async function main() {
   if (!(await waitForDb(dev ? 3 : 30))) {
     throw new Error("Database is not reachable (check DATABASE_URL and that Postgres is up)");
   }
+  void checkDbEncoding();
 
   const app = next({ dev, hostname, port });
   const handle = app.getRequestHandler();
