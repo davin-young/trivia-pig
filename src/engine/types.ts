@@ -13,6 +13,8 @@ export const settingsSchema = z.object({
   earlyBuzzLockoutMs: z.number().int().min(0).max(5000).default(250),
   /** Can a player/team that answered wrong buzz again on the same clue? */
   allowRebuzz: z.boolean().default(false),
+  /** Compensate for each phone's network latency so the first *press* wins, not the first packet. */
+  fairBuzz: z.boolean().default(true),
   dailyDoublePlacement: z.enum(["author", "random"]).default("author"),
   /** Random placement: how many Daily Doubles per round, by round kind. */
   dailyDoublesSingle: z.number().int().min(0).max(5).default(1),

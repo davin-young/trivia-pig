@@ -254,6 +254,7 @@ export function SettingsPanel() {
       <NumField label="Answer timer (seconds, 0 = off)" value={s.answerTimerSec} min={0} max={120} onSave={(v) => set({ answerTimerSec: v })} />
       <NumField label="Early-buzz lockout (ms, 0 = off)" value={s.earlyBuzzLockoutMs} min={0} max={5000} onSave={(v) => set({ earlyBuzzLockoutMs: v })} />
       <Toggle label="Players who answered wrong can buzz again" checked={s.allowRebuzz} onChange={(v) => set({ allowRebuzz: v })} />
+      <Toggle label="Latency-fair buzzing (first press wins, not best Wi-Fi)" checked={s.fairBuzz} onChange={(v) => set({ fairBuzz: v })} />
       <h3 className="mt-2 font-semibold">Daily Doubles</h3>
       <Field label="Placement">
         <div className="flex gap-2">

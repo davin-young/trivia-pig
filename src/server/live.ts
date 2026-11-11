@@ -8,6 +8,7 @@ import { buildView, type Audience, type GameView } from "@/engine/views";
 import { boardContentSchema, findClue } from "@/shared/board";
 import { TEAM_COLORS, type HostIntent, type PresenceStatus, type PresenceView } from "@/shared/protocol";
 import { prisma } from "./db";
+import { BUZZ_WINDOW_MS, orderBuzzes, type PendingBuzz } from "./buzzQueue";
 
 export interface SocketData {
   role: "display" | "host" | "player";
@@ -41,6 +42,8 @@ export class LiveGame {
   private saving: Promise<void> = Promise.resolve();
   private timers = new Map<string, NodeJS.Timeout>();
   dirty = false;
+  private pendingBuzzes: PendingBuzz<(ok: boolean) => void>[] = [];
+  private buzzTimer: NodeJS.Timeout | null = null;
 
   constructor(
     public readonly id: string,
@@ -63,6 +66,35 @@ export class LiveGame {
     if (!res.ok) return { ok: false, fx: [] };
     this.afterChange(res.fx, action);
     return { ok: true, fx: res.fx };
+  }
+
+  /**
+   * Buzz with latency compensation: while buzzers are open, the first buzz
+   * waits a few milliseconds for competitors, then the earliest estimated
+   * *press* wins. Outside that moment (early buzzes, someone already
+   * answering) buzzes are applied immediately.
+   */
+  buzz(playerId: string, rttMs: number): Promise<boolean> {
+    const now = Date.now();
+    const c = this.state.clue;
+    if (!this.state.settings.fairBuzz || !c || c.stage !== "open") {
+      return Promise.resolve(this.dispatch({ type: "player/buzz", playerId }, `player:${playerId}`, now).ok);
+    }
+    return new Promise((resolve) => {
+      this.pendingBuzzes.push({ playerId, arrivedAt: now, rttMs, order: this.pendingBuzzes.length, payload: resolve });
+      this.buzzTimer ??= setTimeout(() => this.flushBuzzes(), BUZZ_WINDOW_MS);
+    });
+  }
+
+  private flushBuzzes() {
+    this.buzzTimer = null;
+    const batch = this.pendingBuzzes;
+    this.pendingBuzzes = [];
+    // A press can't be dated before the action that opened the buzzers.
+    const floor = this.history.log.at(-1)?.at ?? 0;
+    for (const b of orderBuzzes(batch, floor)) {
+      b.payload(this.dispatch({ type: "player/buzz", playerId: b.playerId }, `player:${b.playerId}`, b.at).ok);
+    }
   }
 
   setUndone(seq: number, undone: boolean): boolean {
@@ -326,6 +358,7 @@ export class LiveGame {
   }
 
   dispose() {
+    if (this.buzzTimer) clearTimeout(this.buzzTimer);
     for (const t of this.timers.values()) clearTimeout(t);
     this.timers.clear();
   }

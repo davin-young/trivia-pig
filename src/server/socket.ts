@@ -3,6 +3,7 @@ import { nanoid } from "nanoid";
 import { clientEvents, hostIntentSchema, SCOREKEEPER_INTENTS, type Ack, type ClientEvent } from "@/shared/protocol";
 import { containsProfanity, cleanName } from "./profanity";
 import { TokenBucket } from "./rateLimit";
+import { RttTracker } from "./buzzQueue";
 import { authorizeSocket, SocketAuthError, type SocketAuthDeps } from "./socketAuth";
 import { getManager, type GameSocket, type LiveGame } from "./live";
 import { prisma } from "./db";
@@ -80,6 +81,23 @@ export function attachSocketServer(io: Server, deps: SocketAuthDeps = prismaSock
     const bucket = new TokenBucket(20, 10);
     const handlers = handlersFor(socket.data.role);
 
+    // Players: measure round-trip time from the server side (clients can't fake it)
+    // so buzzes can be ordered by when the button was pressed.
+    let rttTimer: NodeJS.Timeout | null = null;
+    if (socket.data.role === "player") {
+      const tracker = new RttTracker();
+      rtts.set(socket, tracker);
+      const probe = () => {
+        const sent = Date.now();
+        raw.timeout(3000).emit("rtt", (err: Error | null) => {
+          if (!err) tracker.add(Date.now() - sent);
+        });
+      };
+      probe();
+      setTimeout(probe, 500);
+      rttTimer = setInterval(probe, 4000);
+    }
+
     for (const event of Object.keys(clientEvents) as ClientEvent[]) {
       raw.on(event, async (payload: unknown, ack?: (a: Ack) => void) => {
         const reply = typeof ack === "function" ? ack : () => {};
@@ -99,9 +117,14 @@ export function attachSocketServer(io: Server, deps: SocketAuthDeps = prismaSock
       });
     }
 
-    raw.on("disconnect", () => void gameP.then((game) => game?.detach(socket)));
+    raw.on("disconnect", () => {
+      if (rttTimer) clearInterval(rttTimer);
+      void gameP.then((game) => game?.detach(socket));
+    });
   });
 }
+
+const rtts = new WeakMap<object, RttTracker>();
 
 function handlersFor(role: "display" | "host" | "player"): Partial<Record<ClientEvent, Handler>> {
   const common: Partial<Record<ClientEvent, Handler>> = {
@@ -186,15 +209,15 @@ const playerHandlers: Partial<Record<ClientEvent, Handler>> = {
     const res = game.dispatch({ type: "player/signature", playerId: pid, signature: payload.signature ? compactDrawing(payload.signature) : null }, `player:${pid}`);
     return res.ok ? { ok: true } : { ok: false, error: "Couldn't update" };
   },
-  "player:buzz": (game, socket) => {
+  "player:buzz": async (game, socket) => {
     const pid = socket.data.playerId;
     if (!pid) return { ok: false, error: "Join first" };
     const at = Date.now();
-    const res = game.dispatch({ type: "player/buzz", playerId: pid }, `player:${pid}`, at);
+    const accepted = await game.buzz(pid, rtts.get(socket)?.value ?? 0);
     const c = game.state.clue;
     const first = c?.answering === pid;
     const locked = (c?.lockouts[pid] ?? 0) > at;
-    return { ok: true, data: { accepted: res.ok, first, locked } };
+    return { ok: true, data: { accepted, first, locked } };
   },
   "player:finalWager": (game, socket, payload: { amount: number }) => {
     const pid = socket.data.playerId;

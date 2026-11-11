@@ -26,8 +26,10 @@ Built to replace jeopardylabs.com, with a better board editor, real admin contro
 - **Server-authoritative game engine.** It's pure, tested, and event-sourced, so the host can
   **undo any step** (not just the last) and redo it. State persists to Postgres, so a refresh or
   dropped connection resumes exactly where you were.
-- **Fair buzzers.** The server timestamps buzzes, and an optional early-buzz lockout penalizes
-  buzzing before the host unlocks. A setting controls whether wrong answerers can buzz again.
+- **Fair buzzers.** The server measures each phone's network round-trip time and orders buzzes by
+  when the button was *pressed*, so the best Wi-Fi doesn't win (toggle in Settings). An optional
+  early-buzz lockout penalizes buzzing before the host unlocks, and a setting controls whether
+  wrong answerers can buzz again.
 - **Live controls.** Open, reveal, and close clues. "Nobody got it" auto-returns to the board.
   Daily Double wagers, the full Final Jeopardy reveal flow, manual score edits, and passing control.
   Skip, re-open, or mark clues used. Fix a typo mid-game. Pause, BRB or blank screen, scoreboard

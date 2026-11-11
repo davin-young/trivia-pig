@@ -82,6 +82,8 @@ export function useGame({ role, code, onFx, onRedirect, onKicked }: Options) {
       setView(v);
     });
     socket.on("presence", (p: PresenceView) => setPresence(p));
+    // Latency probe: answer immediately so the server can measure round-trip time.
+    socket.on("rtt", (ack?: () => void) => ack?.());
     socket.on("fx", (fx: FxEvent) => cbs.current.onFx?.(fx));
     socket.on("redirect", ({ code: next }: { code: string }) => cbs.current.onRedirect?.(next));
     socket.on("kicked", ({ reason }: { reason: string }) => cbs.current.onKicked?.(reason));
