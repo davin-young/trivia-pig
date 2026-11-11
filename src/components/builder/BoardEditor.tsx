@@ -17,6 +17,9 @@ import {
 import { ClueEditor } from "./ClueEditor";
 import { MediaPicker, uploadFile } from "./MediaPicker";
 import { BulkPasteDialog, DetailsDialog, ImportBoardButton, ShareDialog, VersionsDialog, type BoardMeta } from "./dialogs";
+import { ChecklistDialog, PhoneRound, ThemeDialog, useNarrow } from "./extras";
+import { checkBoard, type BoardIssue } from "@/shared/boardCheck";
+import { themeVars } from "@/shared/theme";
 
 export interface EditorBoard {
   id: string;
@@ -54,7 +57,9 @@ export function BoardEditor({ board, guest = false }: { board: EditorBoard; gues
   const [meta, setMeta] = useState<BoardMeta>({ title: board.title, description: board.description, tags: board.tags, folder: board.folder });
   const [tab, setTab] = useState<Tab>(board.content.rounds.length ? 0 : "final");
   const [editing, setEditing] = useState<{ c: number; r: number } | null>(null);
-  const [dialog, setDialog] = useState<"bulk" | "details" | "share" | "versions" | null>(null);
+  const [dialog, setDialog] = useState<"bulk" | "details" | "share" | "versions" | "theme" | "check" | "check-play" | null>(null);
+  const narrow = useNarrow();
+  const [phoneCat, setPhoneCat] = useState(0);
   const [status, setStatus] = useState<SaveStatus>("saved");
   const [saveError, setSaveError] = useState<string | null>(null);
   const [drag, setDrag] = useState<Drag>(null);
@@ -282,7 +287,9 @@ export function BoardEditor({ board, guest = false }: { board: EditorBoard; gues
   }
 
   // ------------------------------------------------------------------ misc
-  async function startGame() {
+  async function startGame(skipCheck = false) {
+    if (!skipCheck && !guest && issues.length) return setDialog("check-play");
+    setDialog(null);
     setStarting(true);
     await flush();
     if (guest) return router.push("/login?next=/try/claim");
@@ -291,6 +298,21 @@ export function BoardEditor({ board, guest = false }: { board: EditorBoard; gues
     setStarting(false);
     if (!res.ok) return alert(data.error ?? "Couldn't start a game");
     router.push(`/host/${data.code}`);
+  }
+
+  const issues = checkBoard(content);
+
+  /** Go to the cell (or field) an issue points at. */
+  function jump(at: BoardIssue["at"]) {
+    setDialog(null);
+    setTab(at.tab);
+    if (at.c !== undefined) setPhoneCat(at.c);
+    setTimeout(() => {
+      const sel = at.c === undefined ? null : at.field === "name" || at.r === undefined ? `[data-cat="${at.c}"]` : `[data-nav="${at.r}-${at.c}-${at.field === "answer" ? 1 : 0}"]`;
+      const el = sel ? document.querySelector<HTMLElement>(sel) : null;
+      el?.scrollIntoView({ block: "center", behavior: "smooth" });
+      el?.focus({ preventScroll: true });
+    }, 60);
   }
 
   const filled = content.rounds.reduce((n, r) => n + r.categories.reduce((m, c) => m + c.clues.filter((q) => q.text.trim()).length, 0), 0);
@@ -324,11 +346,11 @@ export function BoardEditor({ board, guest = false }: { board: EditorBoard; gues
           <span className="min-w-0 flex-1">
             <b>You are trying the builder without an account.</b> This board is saved in this browser only. Sign in to keep it, add images, and host a game with it.
           </span>
-          <button className="btn-primary !py-1.5" onClick={startGame}>Sign in to save & host</button>
+          <button className="btn-primary !py-1.5" onClick={() => void startGame()}>Sign in to save & host</button>
         </div>
       )}
-      <div className="flex flex-wrap items-center gap-2 text-sm">
-        <button className="btn-primary !py-2" onClick={startGame} disabled={starting}>
+      <div className="flex flex-wrap items-center gap-2 text-sm no-scrollbar max-sm:-mx-3 max-sm:flex-nowrap max-sm:overflow-x-auto max-sm:px-3 [&>*]:shrink-0">
+        <button className="btn-primary !py-2" onClick={() => void startGame()} disabled={starting}>
           {starting ? "Starting…" : guest ? "▶ Sign in to play" : "▶ Play"}
         </button>
         {!guest && (
@@ -342,6 +364,16 @@ export function BoardEditor({ board, guest = false }: { board: EditorBoard; gues
             👁 Preview
           </button>
         )}
+        <button
+          className={`btn-ghost !py-2 ${issues.length ? (issues[0].level === "error" ? "!text-red-300" : "!text-amber-300") : "!text-green-400"}`}
+          onClick={() => setDialog("check")}
+          title={`${filled}/${total} clues filled`}
+        >
+          {issues.length ? `⚠ ${issues.length} to check` : "✓ Ready to play"}
+        </button>
+        <button className="btn-ghost !py-2" onClick={() => setDialog("theme")}>
+          🎨 Theme
+        </button>
         <button className="btn-ghost !py-2" onClick={() => setDialog("details")}>
           ✎ Details
         </button>
@@ -366,13 +398,13 @@ export function BoardEditor({ board, guest = false }: { board: EditorBoard; gues
           </a>
         )}
         {!guest && <ImportBoardButton className="btn-ghost !py-2" label="⬆ Import as new" />}
-        <span className="ml-auto text-white/40">
+        <span className="ml-auto text-white/40 max-sm:hidden">
           {filled}/{total} clues filled
         </span>
       </div>
 
       {/* round tabs */}
-      <div className="flex flex-wrap items-center gap-1 border-b border-line">
+      <div className="flex flex-wrap items-center gap-1 border-b border-line no-scrollbar max-sm:-mx-3 max-sm:flex-nowrap max-sm:overflow-x-auto max-sm:overflow-y-hidden max-sm:px-3 max-sm:pt-px [&>*]:shrink-0">
         {content.rounds.map((r, i) => (
           <button
             key={r.id}
@@ -410,8 +442,26 @@ export function BoardEditor({ board, guest = false }: { board: EditorBoard; gues
             onRemoveRound={() => removeRound(tab)}
             canAddCategory={round.categories.length < MAX_COLS}
           />
-          <div className="overflow-x-auto pb-2">
-            <div
+          {narrow && (
+            <div style={themeVars(content.theme)}>
+              <PhoneRound
+                round={round}
+                cat={phoneCat}
+                setCat={setPhoneCat}
+                canAddCategory={round.categories.length < MAX_COLS}
+                onAddCategory={addCategory}
+                onName={setCategoryName}
+                onMove={moveCategory}
+                onRemove={removeCategory}
+                onPatch={patchClue}
+                onSwap={swapClues}
+                onOpen={(c, r) => setEditing({ c, r })}
+                onFieldKey={onFieldKey}
+              />
+            </div>
+          )}
+          <div className={`overflow-x-auto pb-2 ${narrow ? "hidden" : ""}`} style={themeVars(content.theme)}>
+            {!narrow && <div
               className="grid gap-1.5"
               style={{ gridTemplateColumns: `repeat(${round.categories.length}, minmax(170px, 1fr))`, minWidth: round.categories.length * 176 }}
             >
@@ -539,9 +589,9 @@ export function BoardEditor({ board, guest = false }: { board: EditorBoard; gues
                   );
                 }),
               )}
-            </div>
+            </div>}
           </div>
-          <p className="text-xs text-white/40">
+          <p className="text-xs text-white/40 max-sm:hidden">
             Tab / Shift+Tab move between fields · Enter moves down · Alt+Arrows move around · Ctrl+Enter opens the full editor (media, Daily Double) · drag ⠿ to reorder · changes save automatically
           </p>
         </>
@@ -584,6 +634,10 @@ export function BoardEditor({ board, guest = false }: { board: EditorBoard; gues
       )}
       {dialog === "bulk" && round && typeof tab === "number" && (
         <BulkPasteDialog round={round} onClose={() => setDialog(null)} onApply={(r) => mutate((d) => void (d.rounds[tab] = r))} />
+      )}
+      {dialog === "theme" && <ThemeDialog theme={content.theme} onChange={(t) => mutate((d) => void (d.theme = t))} onClose={() => setDialog(null)} />}
+      {(dialog === "check" || dialog === "check-play") && (
+        <ChecklistDialog issues={issues} filled={filled} total={total} aboutToPlay={dialog === "check-play"} onJump={jump} onPlay={() => void startGame(true)} onClose={() => setDialog(null)} />
       )}
       {dialog === "details" && <DetailsDialog meta={meta} onSave={setMeta} onClose={() => setDialog(null)} />}
       {dialog === "share" && <ShareDialog boardId={board.id} initial={{ token: board.shareToken, mode: board.shareMode, listed: !!board.listed }} onClose={() => setDialog(null)} />}
@@ -639,19 +693,19 @@ function RoundSettings({
   useEffect(() => setValuesText(round.values.join(", ")), [round.values]);
   const preset = round.kind === "double" ? DOUBLE_VALUES : SINGLE_VALUES;
   return (
-    <div className="flex flex-wrap items-end gap-3 rounded-xl border border-line bg-panel p-3 text-sm">
+    <div className="flex flex-wrap items-end gap-3 rounded-xl border border-line bg-panel p-3 text-sm max-sm:grid max-sm:grid-cols-2 max-sm:gap-2">
       <label className="flex flex-col gap-1">
         <span className="text-white/60">Round name</span>
-        <input className="input !w-48 !py-1.5" value={round.name} maxLength={80} onChange={(e) => onName(e.target.value)} />
+        <input className="input !w-48 !py-1.5 max-sm:!w-full" value={round.name} maxLength={80} onChange={(e) => onName(e.target.value)} />
       </label>
       <label className="flex flex-col gap-1">
         <span className="text-white/60">Type</span>
-        <select className="input !w-36 !py-1.5" value={round.kind} onChange={(e) => onKind(e.target.value as Round["kind"])}>
+        <select className="input !w-36 !py-1.5 max-sm:!w-full" value={round.kind} onChange={(e) => onKind(e.target.value as Round["kind"])}>
           <option value="single">Single</option>
           <option value="double">Double</option>
         </select>
       </label>
-      <label className="flex min-w-56 flex-1 flex-col gap-1">
+      <label className="flex min-w-56 flex-1 flex-col gap-1 max-sm:col-span-2 max-sm:min-w-0">
         <span className="text-white/60">Point values (one per row)</span>
         <input
           className="input !py-1.5"

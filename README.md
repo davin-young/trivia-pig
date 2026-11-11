@@ -24,6 +24,12 @@ own copy (see [Quick start](#quick-start-docker)). A public instance runs at <ht
   big room code and QR, original lobby music, and a wall of hand-drawn name cards that pop in as
   people join. Cards resize to fit, so 3 players or 300 both fill the screen. There is no cap on
   players or teams unless the host sets one.
+- **Board themes.** Each board can have its own look: eight presets or your own board colour,
+  accent colour and lettering. The big screen, phones and host controls all follow it. Colours are
+  adjusted automatically if a pick would make clue text hard to read.
+- **Board checklist.** The editor lists blank cells, clues with no answer, unnamed categories and a
+  half-filled final round, and jumps to each one. Pressing Play with open items asks first.
+- **Phone-friendly builder.** On a phone the editor shows one category at a time with large fields.
 - **Party-game touches.**
   - *Everybody's in:* the first player to join gets a crown and can start the game from their
     phone, so a casual night needs no host device.

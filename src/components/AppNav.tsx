@@ -9,13 +9,13 @@ export function AppNav({ user, active }: { user: { name: string; email: string; 
     </Link>
   );
   return (
-    <header className="sticky top-0 z-30 border-b border-line bg-panel/95 backdrop-blur">
+    <header className="top-0 z-30 sm:sticky border-b border-line bg-panel/95 backdrop-blur">
       <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-2 px-4 py-2">
         <Link href="/dashboard" className="mr-2 flex items-center gap-2 font-bold">
           <span className="text-2xl">🐷</span>
           <span className="cat-text text-lg">{APP_NAME}</span>
         </Link>
-        <nav className="flex flex-wrap gap-1">
+        <nav className="no-scrollbar flex flex-wrap gap-1 max-sm:order-last max-sm:w-full max-sm:flex-nowrap max-sm:overflow-x-auto [&>*]:shrink-0">
           {link("/dashboard", "Boards", "boards")}
           {link("/dashboard/games", "Games", "games")}
           {link("/dashboard/leaderboard", "Leaderboard", "leaderboard")}
