@@ -3,13 +3,33 @@
 import { useState } from "react";
 import { APP_NAME } from "@/components/game";
 
-export default function LoginForm({ next, allowSignup, firstRun, linkError }: { next: string; allowSignup: boolean; firstRun: boolean; linkError: boolean }) {
+const ERRORS: Record<string, string> = {
+  link: "That sign-in link is invalid or expired.",
+  sso: "Single sign-on failed. Try again, or check the server log.",
+  role: "Your account isn't allowed to host games here. Ask an admin for access.",
+};
+
+export default function LoginForm({
+  next,
+  allowSignup,
+  firstRun,
+  error,
+  sso,
+  localAuth,
+}: {
+  next: string;
+  allowSignup: boolean;
+  firstRun: boolean;
+  error: string | null;
+  sso: { label: string } | null;
+  localAuth: boolean;
+}) {
   const [mode, setMode] = useState<"login" | "signup" | "magic">(firstRun ? "signup" : "login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<string | null>(linkError ? "That sign-in link is invalid or expired." : null);
+  const [msg, setMsg] = useState<string | null>(error ? (ERRORS[error] ?? null) : null);
   const [devLink, setDevLink] = useState<string | null>(null);
 
   async function submit(e: React.FormEvent) {
@@ -37,6 +57,17 @@ export default function LoginForm({ next, allowSignup, firstRun, linkError }: { 
         <h1 className="cat-text text-3xl">{APP_NAME}</h1>
         <p className="text-sm text-white/60">{firstRun ? "Create the first (admin) account" : "Host sign in"}</p>
       </div>
+      {sso && (
+        <>
+          <a href={`/api/auth/oidc/login?next=${encodeURIComponent(next)}`} className="btn-primary w-full py-3 text-lg">
+            🔐 Sign in with {sso.label}
+          </a>
+          {localAuth && <div className="my-4 text-center text-xs uppercase tracking-widest text-white/30">or</div>}
+          {!localAuth && msg && <div className="mt-3 rounded-lg bg-white/10 p-2 text-sm">{msg}</div>}
+        </>
+      )}
+      {localAuth && (
+      <>
       <form onSubmit={submit} className="flex flex-col gap-3">
         {mode === "signup" && <input className="input" placeholder="Your name" value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" />}
         <input className="input" type="email" required placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
@@ -54,6 +85,8 @@ export default function LoginForm({ next, allowSignup, firstRun, linkError }: { 
         {mode !== "login" && !firstRun && <button className="underline" onClick={() => setMode("login")}>Sign in with password</button>}
         {mode !== "signup" && allowSignup && <button className="underline" onClick={() => setMode("signup")}>Create an account</button>}
       </div>
+      </>
+      )}
     </div>
   );
 }

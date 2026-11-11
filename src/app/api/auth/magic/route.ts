@@ -9,6 +9,7 @@ const body = z.object({ email: z.string().email().max(200) });
 
 /** Request a sign-in link by email. */
 export async function POST(req: Request) {
+  if (!env.localAuth) return err("Password sign-in is disabled; use single sign-on", 403);
   if (!hit(`magic:${clientIp(req)}`, 5, 10 * 60_000)) return err("Too many requests, try later", 429);
   const parsed = body.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return err("Enter a valid email");
@@ -20,6 +21,7 @@ export async function POST(req: Request) {
 
 /** Follow a sign-in link. */
 export async function GET(req: Request) {
+  if (!env.localAuth) return NextResponse.redirect(`${env.appUrl}/login`);
   const token = new URL(req.url).searchParams.get("token") ?? "";
   const user = await consumeMagicLink(token);
   if (!user) return NextResponse.redirect(`${env.appUrl}/login?error=link`);
