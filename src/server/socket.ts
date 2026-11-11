@@ -12,6 +12,7 @@ import { userFromSessionToken } from "./auth";
 import { hostRoleFor } from "./access";
 import { pairing } from "./pairingStore";
 import { compactDrawing } from "@/shared/strokes";
+import { vipOf } from "@/engine/reducer";
 
 export const prismaSocketAuthDeps: SocketAuthDeps = {
   async findGame(code) {
@@ -41,6 +42,8 @@ const COST: Partial<Record<ClientEvent, number>> = {
   "player:finalAnswer": 8,
   "player:allPlayAnswer": 8,
   "player:react": 2,
+  "player:seats": 2,
+  "player:reclaim": 6,
 };
 
 export function attachSocketServer(io: Server, deps: SocketAuthDeps = prismaSocketAuthDeps) {
@@ -153,6 +156,12 @@ const hostHandlers: Partial<Record<ClientEvent, Handler>> = {
       const added = game.addBots(intent.count, `host:${socket.data.userId}`);
       return added > 0 ? { ok: true, data: { added } } : { ok: false, error: "No room for more players" };
     }
+    if (intent.type === "game/start") {
+      return game.requestStart(`host:${socket.data.userId}`, !!intent.now) ? { ok: true } : { ok: false, error: "The game has already started" };
+    }
+    if (intent.type === "game/cancelStart") {
+      return game.dispatch({ type: "game/countdownCancel" }, `host:${socket.data.userId}`).ok ? { ok: true } : { ok: false, error: "No countdown is running" };
+    }
     if (intent.type === "bots/remove") {
       return game.removeBots(`host:${socket.data.userId}`) > 0 ? { ok: true } : { ok: false, error: "No bots in this game" };
     }
@@ -186,26 +195,37 @@ function drawingThrottle(socket: GameSocket): boolean {
 }
 
 const playerHandlers: Partial<Record<ClientEvent, Handler>> = {
-  "player:join": async (game, socket, payload: { name: string; signature: import("@/shared/strokes").Drawing | null; teamId?: string | null }) => {
+  "player:join": async (
+    game,
+    socket,
+    payload: { name: string; signature: import("@/shared/strokes").Drawing | null; teamId?: string | null; avatar?: import("@/shared/strokes").Drawing | null; audience?: boolean },
+  ) => {
     const name = cleanName(payload.name);
     if (!name) return { ok: false, error: "Enter a name" };
     if (containsProfanity(name)) return { ok: false, error: "Please choose a different name" };
     const signature = payload.signature ? compactDrawing(payload.signature) : null;
+    const avatar = payload.avatar && game.state.settings.avatars ? compactDrawing(payload.avatar) : null;
 
     // Rejoin with an existing token keeps the same seat and score.
     const existing = socket.data.playerId;
     if (existing && game.state.players[existing]) {
-      const res = game.dispatch({ type: "player/join", playerId: existing, name, signature }, `player:${existing}`);
+      const res = game.dispatch({ type: "player/join", playerId: existing, name, signature, avatar }, `player:${existing}`);
       if (!res.ok) return { ok: false, error: "You can't rejoin this game" };
       game.bindPlayer(socket, existing);
       return { ok: true, data: { playerId: existing } };
     }
 
-    const playerId = `p_${nanoid(10)}`;
-    const res = game.dispatch({ type: "player/join", playerId, name, signature, teamId: payload.teamId ?? null }, `player:${playerId}`);
+    const audience = !!payload.audience;
+    const playerId = `${audience ? "a" : "p"}_${nanoid(10)}`;
+    const res = game.dispatch(
+      audience ? { type: "player/join", playerId, name, signature: null, audience: true } : { type: "player/join", playerId, name, signature, avatar, teamId: payload.teamId ?? null },
+      `player:${playerId}`,
+    );
     if (!res.ok) {
       const s = game.state;
-      const reason = s.lobbyLocked
+      const reason = audience
+        ? "This game isn't taking an audience"
+        : s.lobbyLocked
         ? "The lobby is locked"
         : s.phase !== "lobby" && !s.settings.allowLateJoin
           ? "This game has already started"
@@ -217,12 +237,41 @@ const playerHandlers: Partial<Record<ClientEvent, Handler>> = {
     game.bindPlayer(socket, playerId);
     return { ok: true, data: { playerId, playerToken: token } };
   },
-  "player:signature": (game, socket, payload: { signature: import("@/shared/strokes").Drawing | null }) => {
+  "player:signature": (game, socket, payload: { signature: import("@/shared/strokes").Drawing | null; avatar?: import("@/shared/strokes").Drawing | null }) => {
     const pid = socket.data.playerId;
     if (!pid) return { ok: false, error: "Join first" };
     if (!drawingThrottle(socket)) return { ok: false, error: "Slow down" };
-    const res = game.dispatch({ type: "player/signature", playerId: pid, signature: payload.signature ? compactDrawing(payload.signature) : null }, `player:${pid}`);
+    const avatar = payload.avatar === undefined || !game.state.settings.avatars ? undefined : payload.avatar ? compactDrawing(payload.avatar) : null;
+    const res = game.dispatch(
+      { type: "player/signature", playerId: pid, signature: payload.signature ? compactDrawing(payload.signature) : null, ...(avatar !== undefined ? { avatar } : {}) },
+      `player:${pid}`,
+    );
     return res.ok ? { ok: true } : { ok: false, error: "Couldn't update" };
+  },
+  "player:start": (game, socket, payload: { cancel?: boolean }) => {
+    const pid = socket.data.playerId;
+    if (!pid || vipOf(game.state) !== pid) return { ok: false, error: "Only the first player in can start the game" };
+    if (payload.cancel) return game.dispatch({ type: "game/countdownCancel" }, `player:${pid}`).ok ? { ok: true } : { ok: false, error: "No countdown is running" };
+    return game.requestStart(`player:${pid}`, false) ? { ok: true } : { ok: false, error: "The game has already started" };
+  },
+  "player:cheer": (game, socket, payload: { contestantId: string | null }) => {
+    const pid = socket.data.playerId;
+    if (!pid) return { ok: false, error: "Join first" };
+    const now = Date.now();
+    if (now - (lastCheerAt.get(socket) ?? 0) < 800) return { ok: false, error: "Slow down" };
+    lastCheerAt.set(socket, now);
+    return game.dispatch({ type: "player/cheer", playerId: pid, contestantId: payload.contestantId }, `player:${pid}`).ok ? { ok: true } : { ok: false, error: "Couldn't change your pick" };
+  },
+  "player:seats": (game) => ({ ok: true, data: { seats: game.state.settings.reclaimSeats ? game.emptySeats() : [] } }),
+  "player:reclaim": async (game, socket, payload: { playerId: string }) => {
+    if (!game.state.settings.reclaimSeats) return { ok: false, error: "The host turned this off. Ask them to let you back in." };
+    // Only a seat nobody is sitting in can be taken, so a live player can never be bumped.
+    if (!game.emptySeats().some((seat) => seat.id === payload.playerId)) return { ok: false, error: "That seat is in use. Pick another or join as a new player." };
+    const token = randomToken();
+    const where = { gameId_playerId: { gameId: game.id, playerId: payload.playerId } };
+    await prisma.gamePlayer.upsert({ where, update: { tokenHash: sha256(token) }, create: { gameId: game.id, playerId: payload.playerId, tokenHash: sha256(token) } });
+    game.bindPlayer(socket, payload.playerId);
+    return { ok: true, data: { playerId: payload.playerId, playerToken: token } };
   },
   "player:buzz": async (game, socket) => {
     const pid = socket.data.playerId;
@@ -273,3 +322,4 @@ const playerHandlers: Partial<Record<ClientEvent, Handler>> = {
 };
 
 const lastReactAt = new WeakMap<object, number>();
+const lastCheerAt = new WeakMap<object, number>();

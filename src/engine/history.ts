@@ -67,9 +67,15 @@ export function describeAction(a: GameAction, state: GameState): string {
     !id ? "nobody" : state.teams.find((t) => t.id === id)?.name ?? state.players[id]?.name ?? "contestant";
   switch (a.type) {
     case "player/join":
-      return `${a.name || "Player"} joined`;
+      return a.audience ? `${a.name || "Someone"} joined the audience` : `${a.name || "Player"} joined`;
     case "player/signature":
       return `${pname(a.playerId)} redrew their name`;
+    case "player/cheer":
+      return a.contestantId ? `${pname(a.playerId)} is cheering for ${cname(a.contestantId)}` : `${pname(a.playerId)} stopped cheering`;
+    case "game/countdown":
+      return "Started the countdown";
+    case "game/countdownCancel":
+      return "Cancelled the countdown";
     case "player/buzz":
       return `${pname(a.playerId)} buzzed`;
     case "player/finalWager":

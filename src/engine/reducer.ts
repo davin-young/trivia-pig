@@ -55,6 +55,8 @@ export function initialState(setup: Setup): GameState {
     bannedNames: [],
     scoreEvents: [],
     buzzStats: {},
+    startingAt: null,
+    audiencePicks: {},
     startedAt: null,
     finishedAt: null,
     version: 0,
@@ -69,14 +71,31 @@ export function normName(name: string): string {
   return name.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+/** People playing (not removed, not audience). */
 export function activePlayers(s: GameState) {
-  return s.playerOrder.map((id) => s.players[id]).filter((p) => p && !p.removed);
+  return s.playerOrder.map((id) => s.players[id]).filter((p) => p && !p.removed && !p.audience);
+}
+
+/** People watching as audience. */
+export function audienceMembers(s: GameState) {
+  return s.playerOrder.map((id) => s.players[id]).filter((p) => p && !p.removed && p.audience);
+}
+
+/** The "VIP": the first human player in the room, who may start the game from their phone. */
+export function vipOf(s: GameState): string | null {
+  if (!s.settings.vipStart) return null;
+  return activePlayers(s).find((p) => !p.bot)?.id ?? null;
+}
+
+/** Every timer length goes through this so the "extended timers" setting applies everywhere. */
+export function scaled(s: GameState, ms: number): number {
+  return Math.round(ms * (s.settings.timerScale || 1));
 }
 
 /** The id that scores attach to: the player in solo mode, their team in team mode. */
 export function contestantOf(s: GameState, playerId: string): string | null {
   const p = s.players[playerId];
-  if (!p || p.removed) return null;
+  if (!p || p.removed || p.audience) return null;
   if (s.settings.mode === "team") return p.teamId && s.teams.some((t) => t.id === p.teamId) ? p.teamId : null;
   return p.id;
 }
@@ -176,9 +195,29 @@ function reduce(s: GameState, entry: LogEntry, fx: Cue[]): boolean {
         existing.removed = false;
         if (a.name) existing.name = a.name;
         if (a.signature) existing.signature = a.signature;
+        if (a.avatar) existing.avatar = a.avatar;
+        if ((a.signature || a.avatar) && s.settings.familyMode) existing.signatureHidden = true;
         return true;
       }
       if (s.bannedNames.includes(normName(a.name))) return false;
+      if (a.audience) {
+        // The audience can always get in, even when the room is locked or full.
+        if (!s.settings.audience) return false;
+        s.players[a.playerId] = {
+          id: a.playerId,
+          name: a.name,
+          signature: null,
+          signatureHidden: false,
+          teamId: null,
+          joinedAt: at,
+          index: s.playerOrder.length,
+          removed: false,
+          banned: false,
+          audience: true,
+        };
+        s.playerOrder.push(a.playerId);
+        return true;
+      }
       if (s.lobbyLocked) return false;
       if (s.phase !== "lobby" && !s.settings.allowLateJoin) return false;
       if (s.settings.maxPlayers > 0 && activePlayers(s).length >= s.settings.maxPlayers) return false;
@@ -187,7 +226,9 @@ function reduce(s: GameState, entry: LogEntry, fx: Cue[]): boolean {
         id: a.playerId,
         name: a.name,
         signature: a.signature,
-        signatureHidden: false,
+        // Family mode: nothing hand-drawn reaches the big screen until the host has seen it.
+        signatureHidden: s.settings.familyMode && !a.bot && (!!a.signature || !!a.avatar),
+        avatar: a.avatar ?? null,
         teamId,
         joinedAt: at,
         index: s.playerOrder.length,
@@ -202,9 +243,22 @@ function reduce(s: GameState, entry: LogEntry, fx: Cue[]): boolean {
     }
     case "player/signature": {
       const p = s.players[a.playerId];
-      if (!p || p.removed) return false;
+      if (!p || p.removed || p.audience) return false;
       p.signature = a.signature;
-      p.signatureHidden = false;
+      if (a.avatar !== undefined) p.avatar = a.avatar;
+      p.signatureHidden = s.settings.familyMode && (!!p.signature || !!p.avatar);
+      return true;
+    }
+    case "player/cheer": {
+      const p = s.players[a.playerId];
+      if (!p || p.removed || !p.audience) return false;
+      if (a.contestantId === null) {
+        if (!s.audiencePicks[a.playerId]) return false;
+        delete s.audiencePicks[a.playerId];
+        return true;
+      }
+      if (!isContestant(s, a.contestantId) || s.audiencePicks[a.playerId] === a.contestantId) return false;
+      s.audiencePicks[a.playerId] = a.contestantId;
       return true;
     }
     case "player/buzz": {
@@ -237,7 +291,7 @@ function reduce(s: GameState, entry: LogEntry, fx: Cue[]): boolean {
         }
         s.timer =
           s.settings.answerTimerSec > 0
-            ? { startedAt: at, endsAt: at + s.settings.answerTimerSec * 1000, label: "answer" }
+            ? { startedAt: at, endsAt: at + scaled(s, s.settings.answerTimerSec * 1000), label: "answer" }
             : null;
         fx.push({ cue: "buzz", playerId: a.playerId });
       }
@@ -311,6 +365,7 @@ function reduce(s: GameState, entry: LogEntry, fx: Cue[]): boolean {
       const p = s.players[a.playerId];
       if (!p) return false;
       p.removed = true;
+      delete s.audiencePicks[a.playerId];
       if (a.type === "player/ban") {
         p.banned = true;
         const n = normName(p.name);
@@ -366,8 +421,19 @@ function reduce(s: GameState, entry: LogEntry, fx: Cue[]): boolean {
       }
       return true;
     }
+    case "game/countdown": {
+      if (s.phase !== "lobby" || s.startingAt) return false;
+      s.startingAt = a.endsAt;
+      return true;
+    }
+    case "game/countdownCancel": {
+      if (!s.startingAt) return false;
+      s.startingAt = null;
+      return true;
+    }
     case "game/start": {
       if (s.phase !== "lobby") return false;
+      s.startingAt = null;
       s.dailyDoubles = a.dailyDoubles;
       s.startedAt = at;
       if (s.board.rounds.length === 0) {
@@ -407,13 +473,13 @@ function reduce(s: GameState, entry: LogEntry, fx: Cue[]): boolean {
       s.phase = "clue";
       s.timer = null;
       if (a.allPlay && !isDD) {
-        const endsAt = at + s.settings.allPlayTimerSec * 1000;
+        const endsAt = at + scaled(s, s.settings.allPlayTimerSec * 1000);
         clue.allPlay = { stage: "writing", endsAt, answers: {}, typed: {}, judged: {} };
         s.timer = { startedAt: at, endsAt, label: "allplay" };
         fx.push({ cue: "clueOpen" }, { cue: "think" });
         return true;
       }
-      if (s.settings.autoUnlock && !isDD) clue.autoUnlockAt = at + readingTimeMs(found.clue.text);
+      if (s.settings.autoUnlock && !isDD) clue.autoUnlockAt = at + scaled(s, readingTimeMs(found.clue.text));
       fx.push(isDD ? { cue: "dailyDouble" } : { cue: "clueOpen" });
       return true;
     }
@@ -629,7 +695,7 @@ function reduce(s: GameState, entry: LogEntry, fx: Cue[]): boolean {
       const f = s.final;
       if (!f || (f.stage !== "clue" && f.stage !== "category")) return false;
       f.stage = "writing";
-      f.endsAt = at + s.settings.finalTimerSec * 1000;
+      f.endsAt = at + scaled(s, s.settings.finalTimerSec * 1000);
       s.timer = { startedAt: at, endsAt: f.endsAt, label: "final" };
       fx.push({ cue: "think" });
       return true;

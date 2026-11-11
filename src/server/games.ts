@@ -56,7 +56,7 @@ export function rematchLog(prevSetup: Setup, prevLog: LogEntry[]): LogEntry[] {
   for (const id of s.playerOrder) {
     const p = s.players[id];
     if (!p || p.removed) continue;
-    push({ type: "player/join", playerId: p.id, name: p.name, signature: p.signature, teamId: p.teamId });
+    push(p.audience ? { type: "player/join", playerId: p.id, name: p.name, signature: null, audience: true } : { type: "player/join", playerId: p.id, name: p.name, signature: p.signature, avatar: p.avatar ?? null, teamId: p.teamId });
   }
   return out;
 }

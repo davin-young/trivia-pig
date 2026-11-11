@@ -32,7 +32,7 @@ export function summarize(s: GameState) {
     roundIndex: s.roundIndex,
     mode: s.settings.mode,
     scores: s.scores,
-    players: s.playerOrder.map((id) => s.players[id]).filter((p) => !p.removed).map((p) => ({ id: p.id, name: p.name, teamId: p.teamId })),
+    players: s.playerOrder.map((id) => s.players[id]).filter((p) => !p.removed && !p.audience).map((p) => ({ id: p.id, name: p.name, teamId: p.teamId })),
     teams: s.teams,
     awards: s.phase === "finished" ? computeAwards(s) : [],
   };
@@ -168,7 +168,39 @@ export class LiveGame {
         if (this.state.clue?.id === id && this.state.clue.allPlay?.stage === "writing") this.dispatch({ type: "allPlay/close" }, "system");
       });
     } else this.cancel("allPlay");
+    const startingAt = this.state.phase === "lobby" ? this.state.startingAt : null;
+    if (startingAt) {
+      this.later("start", Math.max(0, startingAt - Date.now()), () => {
+        if (this.state.phase === "lobby" && this.state.startingAt === startingAt) this.startNow("system");
+      });
+    } else this.cancel("start");
     this.driveBots();
+  }
+
+  // ------------------------------------------------------------------ start
+
+  private startNow(by: string): boolean {
+    return this.dispatch({ type: "game/start", dailyDoubles: resolveDailyDoubles(this.state.board, this.state.settings) }, by).ok;
+  }
+
+  /**
+   * Start the game: with the countdown setting on, the first request starts the
+   * countdown and a second one (or `now`) skips it.
+   */
+  requestStart(by: string, now: boolean): boolean {
+    const s = this.state;
+    if (s.phase !== "lobby") return false;
+    const sec = s.settings.startCountdownSec;
+    if (sec > 0 && !s.startingAt && !now) return this.dispatch({ type: "game/countdown", endsAt: Date.now() + sec * 1000 }, by).ok;
+    return this.startNow(by);
+  }
+
+  /** Seats whose player has no phone connected right now (for "that's me" on the join screen). */
+  emptySeats(): { id: string; name: string }[] {
+    const online = new Set([...this.sockets.values()].map((s) => s.data.playerId).filter(Boolean));
+    return activePlayers(this.state)
+      .filter((p) => !p.bot && !online.has(p.id))
+      .map((p) => ({ id: p.id, name: p.name }));
   }
 
   private cancel(key: string) {
@@ -296,6 +328,8 @@ export class LiveGame {
       }
       case "game/start":
         return { type: "game/start", dailyDoubles: resolveDailyDoubles(s.board, s.settings) };
+      case "game/cancelStart":
+        return { type: "game/countdownCancel" };
       case "clue/edit": {
         const { saveToBoard, ...rest } = intent;
         if (saveToBoard) void this.saveClueEditToBoard(rest.clueId, rest.text, rest.answer);
@@ -340,6 +374,7 @@ export class LiveGame {
     return buildView(this.state, {
       audience,
       code: this.code,
+      gameId: this.id,
       title: this.title,
       playerId,
       log: audience === "host" ? this.history.log : undefined,

@@ -1,7 +1,7 @@
 import type { GameState, ScoreEvent } from "./types";
 
 export interface Award {
-  id: "fastest" | "streak" | "sharpshooter" | "highRoller" | "comeback" | "triggerHappy" | "brave";
+  id: "fastest" | "streak" | "sharpshooter" | "highRoller" | "comeback" | "triggerHappy" | "brave" | "crowd";
   emoji: string;
   title: string;
   /** Display name of the winner (a player, or a team in team mode). */
@@ -116,6 +116,12 @@ export function computeAwards(s: GameState): Award[] {
   if (trigger && trigger.wins >= 3 && trigger.id !== fastest?.id)
     awards.push({ id: "triggerHappy", emoji: "🔔", title: "Trigger Happy", name: nameOf(s, trigger.id), winnerId: trigger.id, detail: `First to buzz ${trigger.wins} times` });
   if (brave && brave.id !== sharp?.id) awards.push({ id: "brave", emoji: "🦁", title: "Fearless", name: nameOf(s, brave.id), winnerId: brave.id, detail: `Went for it and missed ${brave.wrong} times` });
+
+  // Crowd favorite: who the audience cheered for the most.
+  const cheers = new Map<string, number>();
+  for (const id of Object.values(s.audiencePicks ?? {})) if (live(id)) cheers.set(id, (cheers.get(id) ?? 0) + 1);
+  const crowd = [...cheers].sort((a, b) => b[1] - a[1])[0];
+  if (crowd) awards.push({ id: "crowd", emoji: "📣", title: "Crowd Favorite", name: nameOf(s, crowd[0]), winnerId: crowd[0], detail: `${crowd[1]} audience ${crowd[1] === 1 ? "member was" : "members were"} cheering` });
 
   return awards;
 }

@@ -29,6 +29,24 @@ export const settingsSchema = z.object({
   dailyDoublesDouble: z.number().int().min(0).max(5).default(2),
   finalTimerSec: z.number().int().min(10).max(300).default(30),
   multiColor: z.boolean().default(true),
+  /** The first player to join can start the game from their phone. */
+  vipStart: z.boolean().default(true),
+  /** Seconds of "starting in..." on the big screen before the board appears (0 = start at once). */
+  startCountdownSec: z.number().int().min(0).max(30).default(5),
+  /** Let people watch as audience: they react and cheer but do not buzz or score. */
+  audience: z.boolean().default(true),
+  /** Offer a small doodle avatar next to the drawn name. */
+  avatars: z.boolean().default(true),
+  /** Family friendly: drawings stay hidden on the big screen until the host approves them. */
+  familyMode: z.boolean().default(false),
+  /** A player whose phone died can take their seat back by picking their name. */
+  reclaimSeats: z.boolean().default(true),
+  /** Multiplies every timer (1 = normal, 2 = twice as long). */
+  timerScale: z.number().min(1).max(3).default(1),
+  /** Show a text caption on the big screen for each sound cue. */
+  captions: z.boolean().default(false),
+  /** Streamer mode: keep the room code and QR off the big screen. */
+  hideCode: z.boolean().default(false),
   sound: z
     .object({
       master: z.number().min(0).max(1).default(0.8),
@@ -60,6 +78,10 @@ export interface Player {
   banned: boolean;
   /** Practice bot driven by the server (rehearsal mode). */
   bot?: boolean;
+  /** Small doodle shown next to the name. */
+  avatar?: Drawing | null;
+  /** Watching only: can react and cheer, never buzzes or scores. */
+  audience?: boolean;
 }
 
 export interface Team {
@@ -170,6 +192,10 @@ export interface GameState {
   bannedNames: string[];
   scoreEvents: ScoreEvent[];
   buzzStats: Record<string, BuzzStat>;
+  /** Lobby countdown: when the game will start by itself (null = not counting down). */
+  startingAt: number | null;
+  /** audience member id -> the contestant they are cheering for */
+  audiencePicks: Record<string, string>;
   startedAt: number | null;
   finishedAt: number | null;
   /** Monotonic counter of applied actions, used by clients to detect changes. */
@@ -183,8 +209,9 @@ export interface GameState {
 
 export type GameAction =
   // players
-  | { type: "player/join"; playerId: string; name: string; signature: Drawing | null; teamId?: string | null; bot?: boolean }
-  | { type: "player/signature"; playerId: string; signature: Drawing | null }
+  | { type: "player/join"; playerId: string; name: string; signature: Drawing | null; teamId?: string | null; bot?: boolean; avatar?: Drawing | null; audience?: boolean }
+  | { type: "player/signature"; playerId: string; signature: Drawing | null; avatar?: Drawing | null }
+  | { type: "player/cheer"; playerId: string; contestantId: string | null }
   | { type: "player/buzz"; playerId: string }
   | { type: "player/finalWager"; playerId: string; amount: number }
   | { type: "player/finalAnswer"; playerId: string; drawing: Drawing | null; typed?: string }
@@ -203,6 +230,8 @@ export type GameAction =
   | { type: "team/delete"; teamId: string }
   | { type: "team/assign"; playerId: string; teamId: string | null }
   | { type: "team/autoBalance"; assignments: Record<string, string> }
+  | { type: "game/countdown"; endsAt: number }
+  | { type: "game/countdownCancel" }
   | { type: "game/start"; dailyDoubles: Record<number, string[]> }
   // clue flow
   | { type: "clue/open"; clueId: string; allPlay?: boolean }
@@ -261,4 +290,5 @@ export const PLAYER_ACTIONS: ReadonlySet<ActionType> = new Set([
   "player/finalWager",
   "player/finalAnswer",
   "player/allPlayAnswer",
+  "player/cheer",
 ]);

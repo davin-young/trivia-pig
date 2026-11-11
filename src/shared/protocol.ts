@@ -34,7 +34,9 @@ export const hostIntentSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("team/delete"), teamId: id }),
   z.object({ type: z.literal("team/assign"), playerId: id, teamId: id.nullable() }),
   z.object({ type: z.literal("team/autoBalance") }),
-  z.object({ type: z.literal("game/start") }),
+  /** Starts the countdown (or the game at once when `now` is set, the countdown is off, or it is already running). */
+  z.object({ type: z.literal("game/start"), now: z.boolean().optional() }),
+  z.object({ type: z.literal("game/cancelStart") }),
   z.object({ type: z.literal("clue/open"), clueId: id, allPlay: z.boolean().optional() }),
   z.object({ type: z.literal("allPlay/close") }),
   z.object({ type: z.literal("allPlay/judge"), contestantId: id, correct: z.boolean() }),
@@ -103,8 +105,18 @@ export const clientEvents = {
     name: z.string().trim().min(1).max(24),
     signature: drawingSchema.nullable(),
     teamId: id.nullable().optional(),
+    avatar: drawingSchema.nullable().optional(),
+    /** Join to watch instead of play. */
+    audience: z.boolean().optional(),
   }),
-  "player:signature": z.object({ signature: drawingSchema.nullable() }),
+  "player:signature": z.object({ signature: drawingSchema.nullable(), avatar: drawingSchema.nullable().optional() }),
+  /** The VIP (first player in) starts the game from their phone. */
+  "player:start": z.object({ cancel: z.boolean().optional() }),
+  /** Audience: cheer for a contestant (null clears it). */
+  "player:cheer": z.object({ contestantId: id.nullable() }),
+  /** Seats whose phone is offline, for "that's me" on the join screen. */
+  "player:seats": z.object({}),
+  "player:reclaim": z.object({ playerId: id }),
   "player:buzz": z.object({}),
   "player:finalWager": z.object({ amount: z.number().int().min(0).max(10_000_000) }),
   "player:finalAnswer": z.object({ drawing: drawingSchema.nullable(), typed: z.string().max(200).optional() }),

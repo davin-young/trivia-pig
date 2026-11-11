@@ -2,7 +2,7 @@ import { findClue, isPlayable, type BoardContent, type Media } from "@/shared/bo
 import type { Drawing } from "@/shared/strokes";
 import { describeAction } from "./history";
 import { computeAwards, type Award } from "./awards";
-import { contestantOf, maxDailyDoubleWager, maxFinalWager, roundComplete } from "./reducer";
+import { audienceMembers, contestantOf, maxDailyDoubleWager, maxFinalWager, roundComplete, vipOf } from "./reducer";
 import { PLAYER_ACTIONS, type FinalStage, type GameState, type LogEntry, type Settings, type Team, type Timer, type Screen, type ClueStage } from "./types";
 
 /**
@@ -33,6 +33,16 @@ export interface PlayerView {
   removed: boolean;
   banned: boolean;
   bot: boolean;
+  /** Small doodle next to the name (hidden together with the signature). */
+  avatar: Drawing | null;
+}
+
+export interface AudienceView {
+  count: number;
+  /** contestant id -> how many audience members are cheering for them */
+  cheers: Record<string, number>;
+  /** host only */
+  members?: { id: string; name: string }[];
 }
 
 export interface AllPlayView {
@@ -98,6 +108,8 @@ export interface HistoryItemView {
 export interface GameView {
   audience: Audience;
   code: string;
+  /** Database id, used for the public results link. */
+  gameId: string | null;
   title: string;
   phase: GameState["phase"];
   settings: Settings;
@@ -118,11 +130,20 @@ export interface GameView {
   announcement: { text: string; at: number } | null;
   showJoinQr: boolean;
   lobbyLocked: boolean;
+  /** The player who may start the game from their phone (null when that setting is off). */
+  vipId: string | null;
+  /** Lobby countdown: when the game starts by itself. */
+  startingAt: number | null;
+  crowd: AudienceView;
   version: number;
   serverNow: number;
   /** player audience only */
   me?: {
     playerId: string;
+    name: string;
+    /** Watching only (not in `players`). */
+    audience: boolean;
+    cheerFor: string | null;
     contestantId: string | null;
     lockedUntil: number;
     canBuzz: boolean;
@@ -147,7 +168,7 @@ export interface GameView {
 
 export function buildView(
   s: GameState,
-  ctx: { audience: Audience; code: string; title: string; playerId?: string; log?: LogEntry[]; now?: number },
+  ctx: { audience: Audience; code: string; title: string; playerId?: string; log?: LogEntry[]; now?: number; gameId?: string },
 ): GameView {
   const isHost = ctx.audience === "host";
   const round = s.board.rounds[s.roundIndex];
@@ -268,7 +289,7 @@ export function buildView(
 
   const players: PlayerView[] = s.playerOrder
     .map((id) => s.players[id])
-    .filter((p) => p && (isHost || !p.removed))
+    .filter((p) => p && !p.audience && (isHost || !p.removed))
     .map((p) => ({
       id: p.id,
       name: p.name,
@@ -281,11 +302,20 @@ export function buildView(
       removed: p.removed,
       banned: p.banned,
       bot: !!p.bot,
+      avatar: (p.signatureHidden && !isHost) || (ctx.audience === "player" && p.id !== ctx.playerId) ? null : (p.avatar ?? null),
     }));
+
+  const watchers = audienceMembers(s);
+  const cheers: Record<string, number> = {};
+  for (const w of watchers) {
+    const pick = s.audiencePicks[w.id];
+    if (pick) cheers[pick] = (cheers[pick] ?? 0) + 1;
+  }
 
   const view: GameView = {
     audience: ctx.audience,
     code: ctx.code,
+    gameId: ctx.gameId ?? null,
     title: ctx.title,
     phase: s.phase,
     settings: s.settings,
@@ -306,6 +336,9 @@ export function buildView(
     announcement: s.announcement,
     showJoinQr: s.showJoinQr,
     lobbyLocked: s.lobbyLocked,
+    vipId: s.phase === "lobby" ? vipOf(s) : null,
+    startingAt: s.phase === "lobby" ? s.startingAt : null,
+    crowd: { count: watchers.length, cheers, ...(isHost ? { members: watchers.map((w) => ({ id: w.id, name: w.name })) } : {}) },
     version: s.version,
     serverNow: ctx.now ?? Date.now(),
     awards: s.phase === "finished" ? computeAwards(s) : null,
@@ -328,6 +361,9 @@ export function buildView(
     const f = s.final;
     view.me = {
       playerId: pid,
+      name: s.players[pid]?.name ?? "",
+      audience: !!s.players[pid]?.audience && !s.players[pid]?.removed,
+      cheerFor: s.audiencePicks[pid] ?? null,
       contestantId,
       lockedUntil,
       canBuzz,

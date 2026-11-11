@@ -35,6 +35,7 @@ export type Drawing = z.infer<typeof drawingSchema>;
 
 export const NAME_CANVAS = { w: 600, h: 240 };
 export const FINAL_CANVAS = { w: 800, h: 450 };
+export const AVATAR_CANVAS = { w: 300, h: 300 };
 
 /** Bright swatches tuned to read on the dark-blue display. */
 export const PALETTE = [
