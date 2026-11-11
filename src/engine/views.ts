@@ -232,7 +232,9 @@ export function buildView(
     .map((p) => ({
       id: p.id,
       name: p.name,
-      signature: p.signatureHidden && !isHost ? null : p.signature,
+      // Phones only get their own drawing (keeps broadcasts small on mobile data).
+      signature:
+        (p.signatureHidden && !isHost) || (ctx.audience === "player" && p.id !== ctx.playerId) ? null : p.signature,
       signatureHidden: p.signatureHidden,
       teamId: p.teamId,
       index: p.index,
