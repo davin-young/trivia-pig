@@ -41,8 +41,44 @@ export const env = {
   get mailFrom() {
     return process.env.MAIL_FROM ?? "Jeppidy <no-reply@localhost>";
   },
+  // ---- Keycloak / OIDC (optional) ----
+  get oidcIssuer() {
+    return (process.env.OIDC_ISSUER ?? "").replace(/\/$/, "");
+  },
+  get oidcClientId() {
+    return process.env.OIDC_CLIENT_ID ?? "";
+  },
+  get oidcClientSecret() {
+    return process.env.OIDC_CLIENT_SECRET ?? "";
+  },
+  /** Button label on the sign-in page. */
+  get oidcLabel() {
+    return process.env.OIDC_LABEL ?? "Keycloak";
+  },
+  /** Users with this realm/client role become super-admins. */
+  get oidcAdminRole() {
+    return process.env.OIDC_ADMIN_ROLE ?? "trivia-admin";
+  },
+  /** If set, only users with this role may sign in as hosts. */
+  get oidcRequiredRole() {
+    return process.env.OIDC_REQUIRED_ROLE ?? "";
+  },
+  /** Email/password + magic-link sign-in. Set LOCAL_AUTH=false to make Keycloak the only way in. */
+  get localAuth() {
+    return process.env.LOCAL_AUTH !== "false";
+  },
   /** Behind Cloudflare / a reverse proxy we trust X-Forwarded-* headers. */
   get trustProxy() {
     return process.env.TRUST_PROXY !== "false";
+  },
+  get s3() {
+    return {
+      endpoint: process.env.S3_ENDPOINT || undefined,
+      region: process.env.S3_REGION ?? "us-east-1",
+      bucket: process.env.S3_BUCKET ?? "jeppidy",
+      accessKeyId: process.env.S3_ACCESS_KEY_ID ?? "",
+      secretAccessKey: process.env.S3_SECRET_ACCESS_KEY ?? "",
+      forcePathStyle: process.env.S3_FORCE_PATH_STYLE !== "false",
+    };
   },
 };
