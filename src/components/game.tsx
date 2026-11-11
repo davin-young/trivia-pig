@@ -9,7 +9,8 @@ import type { ConnStatus } from "@/client/useGame";
 import { useTick } from "@/client/useGame";
 import { Ink } from "./Ink";
 
-export const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME || "Trivia Pig";
+export { APP_NAME } from "@/shared/app";
+import { APP_NAME } from "@/shared/app";
 
 export function Qr({ value, className }: { value: string; className?: string }) {
   const [svg, setSvg] = useState("");

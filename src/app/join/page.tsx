@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { CodeEntry } from "@/components/CodeEntry";
-import { APP_NAME } from "@/components/game";
+import { APP_NAME } from "@/shared/app";
 
 export const metadata = { title: "Join a game" };
 

@@ -3,7 +3,7 @@ import Link from "next/link";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/server/db";
 import { currentUser } from "@/server/session";
-import { APP_NAME } from "@/components/game";
+import { APP_NAME } from "@/shared/app";
 import type { BoardContent } from "@/shared/board";
 
 export const dynamic = "force-dynamic";

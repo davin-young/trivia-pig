@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { APP_NAME } from "@/components/game";
+import { APP_NAME } from "@/shared/app";
 import { currentUser } from "@/server/session";
 import { TryEditor } from "./TryEditor";
 

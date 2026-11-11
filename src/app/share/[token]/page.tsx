@@ -5,7 +5,7 @@ import { prisma } from "@/server/db";
 import { parseContent } from "@/server/boards";
 import { currentUser } from "@/server/session";
 import { BoardPreview } from "@/components/builder/BoardPreview";
-import { APP_NAME } from "@/components/game";
+import { APP_NAME } from "@/shared/app";
 import { CopyBoardButton } from "./CopyBoardButton";
 
 export const dynamic = "force-dynamic";
