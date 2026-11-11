@@ -1,0 +1,23 @@
+import { redirect } from "next/navigation";
+import { CodeEntry } from "@/components/CodeEntry";
+import { APP_NAME } from "@/components/game";
+
+export const metadata = { title: "Join a game" };
+
+export default async function JoinPage({ searchParams }: { searchParams: Promise<{ code?: string }> }) {
+  const { code } = await searchParams;
+  // QR codes link straight here with ?code=XXXX — skip the form.
+  if (code && /^[A-Za-z0-9]{4,6}$/.test(code)) redirect(`/play/${code.toUpperCase()}`);
+  return (
+    <main className="flex min-h-dvh flex-col items-center justify-center gap-6 bg-gradient-to-b from-[var(--board-deep)] to-[var(--board-edge)] p-6">
+      <div className="text-center">
+        <div className="text-5xl">🐷</div>
+        <h1 className="cat-text mt-2 text-4xl">{APP_NAME}</h1>
+        <p className="mt-1 text-white/60">Enter the code shown on the big screen</p>
+      </div>
+      <div className="w-full max-w-sm">
+        <CodeEntry target="/play" cta="Join" />
+      </div>
+    </main>
+  );
+}

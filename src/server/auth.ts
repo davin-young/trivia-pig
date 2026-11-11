@@ -1,6 +1,7 @@
 import bcrypt from "bcryptjs";
 import nodemailer from "nodemailer";
-import type { User } from "@prisma/client";
+import type { Prisma, User } from "@prisma/client";
+import { demoBoard, DEMO_TITLE } from "@/shared/demoBoard";
 import { prisma } from "./db";
 import { randomToken, sha256 } from "./crypto";
 import { env } from "./env";
@@ -46,7 +47,7 @@ export async function shouldBeAdmin(email: string): Promise<boolean> {
 
 export async function createUser(email: string, password: string | null, name = ""): Promise<User> {
   const e = normaliseEmail(email);
-  return prisma.user.create({
+  const user = await prisma.user.create({
     data: {
       email: e,
       name: name || e.split("@")[0],
@@ -54,6 +55,11 @@ export async function createUser(email: string, password: string | null, name = 
       isAdmin: await shouldBeAdmin(e),
     },
   });
+  // Every new host starts with the demo board so there's something to play right away.
+  await prisma.board.create({
+    data: { ownerId: user.id, title: DEMO_TITLE, description: "Demo board: one category per round.", tags: ["demo"], content: demoBoard() as unknown as Prisma.InputJsonValue },
+  });
+  return user;
 }
 
 export async function createMagicLink(email: string): Promise<string> {
