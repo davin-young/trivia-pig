@@ -40,6 +40,8 @@ model User {
   email        String   @unique
   name         String   @default("")
   passwordHash String?
+  /// Keycloak / OIDC subject, set on first SSO sign-in
+  oidcSub      String?  @unique
   isAdmin      Boolean  @default(false)
   gameDefaults Json?
   createdAt    DateTime @default(now())
