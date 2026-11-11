@@ -31,7 +31,10 @@ else
     exit 0
   fi
   log "building $after"
-  APP_VERSION="$(git rev-parse --short HEAD)" docker compose build app
+  # Exported so the "up" below (which also builds) labels the image with the same version.
+  APP_VERSION="$(git rev-parse --short HEAD)"
+  export APP_VERSION
+  docker compose build app
 fi
 
 # --wait returns only once the new container reports healthy.
