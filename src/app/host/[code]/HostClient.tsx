@@ -6,7 +6,7 @@ import { useGame } from "@/client/useGame";
 import { useWakeLock } from "@/client/useWakeLock";
 import type { GameView } from "@/engine/views";
 import type { HostIntent, PresenceView } from "@/shared/protocol";
-import { ConnBanner, StatusDot, contestants, formatScore } from "@/components/game";
+import { ConnBanner, StatusDot, contestants, formatScore, useBoardTheme } from "@/components/game";
 import { MainPane } from "./main";
 import { DevicesPanel, DisplayPanel, HistoryPanel, PlayersPanel, SettingsPanel, SoundPanel } from "./panels";
 
@@ -35,6 +35,7 @@ export default function HostClient({ code, gameId, role }: { code: string; gameI
     code,
     onRedirect: (next) => window.location.replace(`/host/${next}`),
   });
+  useBoardTheme(view?.theme);
   const [panel, setPanel] = useState<Panel>(null);
   useWakeLock();
   const [mobileTab, setMobileTab] = useState<"game" | "scores">("game");

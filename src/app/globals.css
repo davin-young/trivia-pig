@@ -5,6 +5,9 @@
   --board-deep: #050c5c;
   --board-edge: #000433;
   --gold: #ffcf3f;
+  /* Lettering for the board; a board theme overrides these on its wrapper. */
+  --f-display: var(--font-oswald), "Arial Narrow", sans-serif;
+  --f-clue: var(--font-lora), Georgia, serif;
   --ink: #f6f7ff;
   --ui-bg: #0b0f24;
   --ui-panel: #141a38;
@@ -45,27 +48,27 @@ button:disabled {
 }
 
 .clue-text {
-  font-family: var(--font-clue);
+  font-family: var(--f-clue);
   font-weight: 700;
   text-transform: uppercase;
   text-shadow: 0.06em 0.06em 0 #000;
   line-height: 1.25;
 }
 .money {
-  font-family: var(--font-display);
+  font-family: var(--f-display);
   font-weight: 700;
   color: var(--gold);
   text-shadow: 0.05em 0.05em 0 #000;
 }
 .cat-text {
-  font-family: var(--font-display);
+  font-family: var(--f-display);
   font-weight: 700;
   text-transform: uppercase;
   text-shadow: 0.05em 0.05em 0 #000;
   line-height: 1.05;
 }
 .board-cell {
-  background: radial-gradient(ellipse at 50% 35%, #1530c8 0%, var(--board) 55%, #071583 100%);
+  background: radial-gradient(ellipse at 50% 35%, color-mix(in srgb, var(--board) 84%, white) 0%, var(--board) 55%, color-mix(in srgb, var(--board) 80%, black) 100%);
   box-shadow: inset 0 0 0.6vmin rgba(0, 0, 0, 0.6);
 }
 
@@ -160,10 +163,10 @@ button:disabled {
 @keyframes buzz-glow {
   0%,
   100% {
-    box-shadow: 0 0 0 0.3vmin var(--gold), 0 0 3vmin 0.6vmin rgba(255, 207, 63, 0.75);
+    box-shadow: 0 0 0 0.3vmin var(--gold), 0 0 3vmin 0.6vmin color-mix(in srgb, var(--gold) 75%, transparent);
   }
   50% {
-    box-shadow: 0 0 0 0.5vmin #fff, 0 0 5vmin 1.2vmin rgba(255, 207, 63, 0.95);
+    box-shadow: 0 0 0 0.5vmin #fff, 0 0 5vmin 1.2vmin color-mix(in srgb, var(--gold) 95%, transparent);
   }
 }
 .podium-buzzed {
@@ -204,4 +207,12 @@ button:disabled {
 }
 .anim-dd {
   animation: dd-spin 1.1s cubic-bezier(0.3, 0.8, 0.3, 1) both;
+}
+
+/* Sideways-scrolling rows (toolbars, tabs) without a visible scrollbar. */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
 }

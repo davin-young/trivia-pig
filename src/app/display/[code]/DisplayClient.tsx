@@ -21,8 +21,7 @@ import {
   formatScore,
   useCountdown,
   useOrigin,
-  type Contestant,
-} from "@/components/game";
+  type Contestant, useBoardTheme } from "@/components/game";
 
 export default function DisplayClient({ code }: { code: string }) {
   const [soundOn, setSoundOn] = useState(false);
@@ -66,6 +65,7 @@ export default function DisplayClient({ code }: { code: string }) {
     onFx,
     onRedirect: (next) => window.location.replace(`/display/${next}`),
   });
+  useBoardTheme(view?.theme);
   viewRef.current = view;
 
   useEffect(() => {

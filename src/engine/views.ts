@@ -1,5 +1,6 @@
 import { findClue, isPlayable, type BoardContent, type Media } from "@/shared/board";
 import type { Drawing } from "@/shared/strokes";
+import type { BoardTheme } from "@/shared/theme";
 import { describeAction } from "./history";
 import { computeAwards, type Award } from "./awards";
 import { audienceMembers, contestantOf, maxDailyDoubleWager, maxFinalWager, roundComplete, vipOf } from "./reducer";
@@ -111,6 +112,8 @@ export interface GameView {
   /** Database id, used for the public results link. */
   gameId: string | null;
   title: string;
+  /** The board's colours and lettering, or null for the classic look. */
+  theme: BoardTheme | null;
   phase: GameState["phase"];
   settings: Settings;
   rounds: { name: string; kind: "single" | "double" }[];
@@ -317,6 +320,7 @@ export function buildView(
     code: ctx.code,
     gameId: ctx.gameId ?? null,
     title: ctx.title,
+    theme: s.board.theme ?? null,
     phase: s.phase,
     settings: s.settings,
     rounds: s.board.rounds.map((r) => ({ name: r.name, kind: r.kind })),

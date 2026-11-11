@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { isPlayable, type BoardContent, type Clue, type Media } from "@/shared/board";
 import { MediaView } from "@/components/game";
+import { themeVars } from "@/shared/theme";
 
 type Open = { category: string; value: number | null; text: string; answer: string; media?: Media | null; answerMedia?: Media | null; dd?: boolean };
 
@@ -24,7 +25,7 @@ export function BoardPreview({ content, title }: { content: BoardContent; title:
   }
 
   return (
-    <div className="flex min-h-dvh flex-col bg-[var(--board-edge)] text-white">
+    <div className="flex min-h-dvh flex-col bg-[var(--board-edge)] text-white" style={themeVars(content.theme)}>
       <div className="flex flex-wrap items-center gap-2 border-b border-white/10 bg-black/30 px-4 py-2">
         <div className="cat-text mr-4 text-lg">{title}</div>
         {content.rounds.map((r, i) => (

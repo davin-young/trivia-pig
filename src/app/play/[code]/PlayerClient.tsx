@@ -7,7 +7,7 @@ import { sound } from "@/client/sound";
 import { useWakeLock } from "@/client/useWakeLock";
 import { DrawingPad } from "@/components/DrawingPad";
 import { Ink } from "@/components/Ink";
-import { ConnBanner, MediaView, StatusDot, TimerBar, contestantName, contestants, formatScore, playerName, useCountdown } from "@/components/game";
+import { ConnBanner, MediaView, StatusDot, TimerBar, contestantName, contestants, formatScore, playerName, useCountdown, useBoardTheme } from "@/components/game";
 import type { GameView } from "@/engine/views";
 import { AVATAR_CANVAS, FINAL_CANVAS, NAME_CANVAS, isEmptyDrawing, type Drawing } from "@/shared/strokes";
 import { REACTIONS } from "@/shared/protocol";
@@ -32,6 +32,7 @@ export default function PlayerClient({ code }: { code: string }) {
       if (reason === "banned") clearPlayerToken(code);
     },
   });
+  useBoardTheme(view?.theme);
 
   useEffect(() => {
     if (!flash) return;
@@ -720,7 +721,7 @@ function FinalPlayer({ view, emit, now }: { view: GameView; emit: Emit; now: () 
         <label className="flex flex-col gap-1">
           <span className="text-white/70">Your wager (0 – ${me.finalMaxWager.toLocaleString()})</span>
           <input
-            className="input text-center font-[family-name:var(--font-display)] text-4xl"
+            className="input text-center font-[family-name:var(--f-display)] text-4xl"
             inputMode="numeric"
             value={wager}
             onChange={(e) => setWager(e.target.value.replace(/[^0-9]/g, "").slice(0, 8))}

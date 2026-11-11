@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { boardThemeSchema } from "./theme";
 
 export const mediaSchema = z.object({
   type: z.enum(["image", "video", "audio", "youtube"]),
@@ -44,6 +45,8 @@ export type FinalClue = z.infer<typeof finalSchema>;
 export const boardContentSchema = z.object({
   rounds: z.array(roundSchema).max(4),
   final: finalSchema.nullish(),
+  /** Colours and lettering. Absent = the classic blue look. */
+  theme: boardThemeSchema.nullish(),
 });
 export type BoardContent = z.infer<typeof boardContentSchema>;
 

@@ -8,9 +8,24 @@ import type { PresenceStatus } from "@/shared/protocol";
 import type { ConnStatus } from "@/client/useGame";
 import { useTick } from "@/client/useGame";
 import { Ink } from "./Ink";
+import { themeVars, type BoardTheme } from "@/shared/theme";
 
 export { APP_NAME } from "@/shared/app";
 import { APP_NAME } from "@/shared/app";
+
+/** Apply a board's colours and lettering to the whole page while this screen is mounted. */
+export function useBoardTheme(theme: BoardTheme | null | undefined) {
+  const key = theme ? `${theme.board}|${theme.accent}|${theme.font}` : "";
+  useEffect(() => {
+    const vars = themeVars(theme);
+    const root = document.documentElement;
+    for (const [k, v] of Object.entries(vars)) root.style.setProperty(k, v);
+    return () => {
+      for (const k of Object.keys(vars)) root.style.removeProperty(k);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+}
 
 export function Qr({ value, className }: { value: string; className?: string }) {
   const [svg, setSvg] = useState("");
@@ -86,7 +101,7 @@ export function Signature({ player, className }: { player: PlayerView; className
   if (player.signature && player.signature.strokes.length) return <Ink drawing={player.signature} className={className} title={player.name} />;
   return (
     <div className={`grid place-items-center ${className ?? ""}`}>
-      <span className="font-[family-name:var(--font-display)] text-[1em] uppercase">{player.name}</span>
+      <span className="font-[family-name:var(--f-display)] text-[1em] uppercase">{player.name}</span>
     </div>
   );
 }
