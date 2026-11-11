@@ -70,25 +70,25 @@ button:disabled {
 }
 
 /* buttons used across host/dashboard */
-.btn {
+@utility btn {
   @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 font-semibold transition select-none active:scale-[0.97] disabled:opacity-40;
 }
-.btn-primary {
+@utility btn-primary {
   @apply btn bg-gold text-black hover:brightness-110;
 }
-.btn-ghost {
+@utility btn-ghost {
   @apply btn border border-line bg-panel-2 text-white hover:bg-[#262e5c];
 }
-.btn-ok {
+@utility btn-ok {
   @apply btn bg-green-600 text-white hover:bg-green-500;
 }
-.btn-bad {
+@utility btn-bad {
   @apply btn bg-red-600 text-white hover:bg-red-500;
 }
-.input {
+@utility input {
   @apply w-full rounded-lg border border-line bg-[#0e1330] px-3 py-2 text-white outline-none placeholder:text-white/30 focus:border-gold;
 }
-.card {
+@utility card {
   @apply rounded-2xl border border-line bg-panel p-4;
 }
 

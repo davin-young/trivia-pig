@@ -62,16 +62,20 @@ export function attachSocketServer(io: Server, deps: SocketAuthDeps = prismaSock
     }
   });
 
-  io.on("connection", async (raw: Socket) => {
+  io.on("connection", (raw: Socket) => {
     const socket = raw as unknown as GameSocket;
-    const game = await manager.load(socket.data.gameId);
-    if (!game) {
-      raw.emit("error", { message: "Game not found" });
-      raw.disconnect(true);
-      return;
-    }
-    manager.cancelEvict(game.id);
-    game.attach(socket);
+    // Register listeners synchronously so messages sent immediately after
+    // connecting aren't dropped while the game loads from the database.
+    const gameP = manager.load(socket.data.gameId).then((game) => {
+      if (!game) {
+        raw.emit("error", { message: "Game not found" });
+        raw.disconnect(true);
+        return null;
+      }
+      manager.cancelEvict(game.id);
+      if (raw.connected) game.attach(socket);
+      return game;
+    });
 
     const bucket = new TokenBucket(20, 10);
     const handlers = handlersFor(socket.data.role);
@@ -84,6 +88,8 @@ export function attachSocketServer(io: Server, deps: SocketAuthDeps = prismaSock
         if (!handler) return reply({ ok: false, error: "Not allowed" });
         const parsed = clientEvents[event].safeParse(payload ?? {});
         if (!parsed.success) return reply({ ok: false, error: "Invalid message" });
+        const game = await gameP;
+        if (!game) return reply({ ok: false, error: "Game not found" });
         try {
           reply(await handler(game, socket, parsed.data as never));
         } catch (err) {
@@ -93,7 +99,7 @@ export function attachSocketServer(io: Server, deps: SocketAuthDeps = prismaSock
       });
     }
 
-    raw.on("disconnect", () => game.detach(socket));
+    raw.on("disconnect", () => void gameP.then((game) => game?.detach(socket)));
   });
 }
 
