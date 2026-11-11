@@ -124,6 +124,10 @@ class SoundEngine {
         this.noise(t, 0.35, { filter: "bandpass", freq: 400, freqTo: 3000, q: 2, gain: 0.12 });
         this.tone(n(7), t + 0.05, 0.25, { type: "triangle", gain: 0.15, glideTo: n(19) });
         break;
+      case "buzzersOpen":
+        this.tone(n(19), t, 0.09, { type: "sine", gain: 0.12 });
+        this.tone(n(24), t + 0.07, 0.14, { type: "sine", gain: 0.12 });
+        break;
       case "dailyDouble":
         this.noise(t, 0.8, { filter: "bandpass", freq: 200, freqTo: 5000, q: 3, gain: 0.2 });
         [0, 4, 7, 12].forEach((s, i) => this.tone(n(s + 12), t + 0.25 + i * 0.09, 0.9 - i * 0.09, { type: "sawtooth", gain: 0.09 }));

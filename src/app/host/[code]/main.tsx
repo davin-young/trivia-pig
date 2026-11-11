@@ -5,6 +5,7 @@ import Link from "next/link";
 import type { BoardCellView } from "@/engine/views";
 import { Ink } from "@/components/Ink";
 import { MediaView, Signature, TimerBar, contestantName, contestants, formatScore, playerName } from "@/components/game";
+import { useTick } from "@/client/useGame";
 import { useHost } from "./HostClient";
 
 export function MainPane() {
@@ -90,9 +91,15 @@ function LobbyControl() {
               <div className="aspect-[5/2] rounded bg-[var(--board-deep)] text-lg">
                 <Signature player={p} className="h-full w-full" />
               </div>
-              <div className="mt-1 truncate text-xs text-white/60">{p.name}{teamMode && ` · ${contestantName(view, p.teamId) === "—" ? "no team" : contestantName(view, p.teamId)}`}</div>
+              <div className="mt-1 truncate text-xs text-white/60">{p.bot && "🤖 "}{p.name}{teamMode && ` · ${contestantName(view, p.teamId) === "—" ? "no team" : contestantName(view, p.teamId)}`}</div>
             </div>
           ))}
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-line pt-3 text-sm">
+          <span className="text-white/60">Rehearse without a crowd:</span>
+          <button className="btn-ghost !py-1.5" onClick={() => act({ type: "bots/add", count: 3 })}>🤖 Add 3 practice bots</button>
+          {players.some((p) => p.bot) && <button className="btn-ghost !py-1.5" onClick={() => act({ type: "bots/remove" })}>Remove bots</button>}
+          <span className="text-xs text-white/40">Bots buzz, write answers and wager on their own.</span>
         </div>
         {teamMode && (
           <p className="mt-3 text-sm text-white/60">
@@ -192,6 +199,15 @@ function CellSheet({ sel, onClose }: { sel: { cell: BoardCellView; cat: string }
               <button className="btn-primary col-span-2 py-3 text-lg" onClick={async () => (await act({ type: "clue/open", clueId: cell.id })) && onClose()}>
                 {cell.used ? "Re-open clue" : "Open on display"}
               </button>
+              {!cell.dailyDouble && (
+                <button
+                  className="btn-ghost col-span-2"
+                  title="Everyone writes an answer on their phone. Right answers score, wrong answers cost nothing."
+                  onClick={async () => (await act({ type: "clue/open", clueId: cell.id, allPlay: true })) && onClose()}
+                >
+                  ✍️ Open as all-play (everyone answers)
+                </button>
+              )}
               <button className="btn-ghost" onClick={async () => (await act({ type: "clue/setUsed", clueId: cell.id, used: !cell.used })) && onClose()}>
                 Mark {cell.used ? "unused" : "used"}
               </button>
@@ -267,12 +283,14 @@ function ClueControl() {
         )}
       </div>
 
-      {c.dailyDouble ? <DailyDoubleControl /> : (
+      {c.dailyDouble ? <DailyDoubleControl /> : c.allPlay ? <AllPlayControl /> : (
         <>
           {!revealed && (
             <div className="grid grid-cols-2 gap-2">
               {c.stage === "reading" && (
-                <button className="btn-ok col-span-2 py-5 text-2xl" onClick={() => act({ type: "buzzers/unlock" })}>🔓 Open buzzers</button>
+                <button className="btn-ok col-span-2 py-5 text-2xl" onClick={() => act({ type: "buzzers/unlock" })}>
+                  🔓 Open buzzers{c.autoUnlockAt ? <AutoUnlockCountdown at={c.autoUnlockAt} /> : null}
+                </button>
               )}
               {c.stage === "open" && (
                 <button className="btn-ghost col-span-2 py-4 text-lg" onClick={() => act({ type: "buzzers/lock" })}>🔒 Lock buzzers <span className="text-sm text-green-400">(open now)</span></button>
@@ -310,7 +328,7 @@ function ClueControl() {
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {!revealed && <button className="btn-ghost" onClick={() => act({ type: "clue/reveal" })}>👁 Reveal answer</button>}
-        {!revealed && <button className="btn-ghost" onClick={() => act({ type: "clue/nobody" })}>🤷 Nobody got it</button>}
+        {!revealed && !c.allPlay && <button className="btn-ghost" onClick={() => act({ type: "clue/nobody" })}>🤷 Nobody got it</button>}
         <button className={`btn-ghost ${revealed ? "btn-primary col-span-2 py-4 text-lg sm:col-span-4" : ""}`} onClick={() => act({ type: "clue/close" })}>
           ⬅ Back to board
         </button>
@@ -326,6 +344,61 @@ function ClueControl() {
         )}
       </div>
       {revealed && c.nobody && <p className="text-center text-sm text-white/50">Returning to the board automatically…</p>}
+    </div>
+  );
+}
+
+function AutoUnlockCountdown({ at }: { at: number }) {
+  const { now } = useHost();
+  useTick(200);
+  const left = Math.max(0, Math.ceil((at - now()) / 1000));
+  return <span className="ml-2 text-base font-normal opacity-80">(opens by itself in {left}s)</span>;
+}
+
+/** All-play clue: watch answers come in, then rule on each one. */
+function AllPlayControl() {
+  const { view, act, now } = useHost();
+  const c = view.clue!;
+  const ap = c.allPlay!;
+  const list = contestants(view);
+  const writing = ap.stage === "writing" && c.stage !== "revealed";
+  const answered = list.filter((x) => ap.hasAnswer[x.id]);
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="rounded-xl bg-[var(--board)] p-3 text-center">
+        <div className="text-sm text-white/70">✍️ All-play: everyone writes an answer. Right answers earn ${c.value}; wrong answers cost nothing.</div>
+        {writing && view.timer && <TimerBar startedAt={view.timer.startedAt} endsAt={view.timer.endsAt} now={now} className="mt-2" />}
+        {writing && <div className="mt-2 text-sm">{answered.length} of {list.length} answered</div>}
+      </div>
+      {writing && <button className="btn-ok py-4 text-lg" onClick={() => act({ type: "allPlay/close" })}>✋ Pencils down: close answers now</button>}
+      <div className="grid gap-2 sm:grid-cols-2">
+        {list.map((x) => {
+          const judged = ap.judged[x.id];
+          const has = !!ap.hasAnswer[x.id];
+          return (
+            <div key={x.id} className={`card !p-2 ${judged === true ? "!border-green-500" : judged === false ? "!border-red-500/70" : ""}`}>
+              <div className="mb-1 flex items-center justify-between text-sm">
+                <b style={{ color: x.color }}>{x.name}</b>
+                <span className="text-white/50">{judged === true ? `✓ +$${c.value}` : judged === false ? "✗" : has ? "answered" : "no answer"}</span>
+              </div>
+              <div className="aspect-[16/9] rounded bg-[var(--board-deep)]">
+                {ap.answers[x.id] ? (
+                  <Ink drawing={ap.answers[x.id]} className="h-full w-full" />
+                ) : (
+                  <div className="clue-text grid h-full place-items-center px-2 text-center text-lg">{ap.typed[x.id] || <span className="text-white/30">—</span>}</div>
+                )}
+              </div>
+              {!writing && (
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  <button className={`btn-ok !py-2 ${judged === true ? "ring-2 ring-white" : ""}`} onClick={() => act({ type: "allPlay/judge", contestantId: x.id, correct: true })}>✓ Correct</button>
+                  <button className={`btn-bad !py-2 ${judged === false ? "ring-2 ring-white" : ""}`} onClick={() => act({ type: "allPlay/judge", contestantId: x.id, correct: false })}>✗ Wrong</button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {!writing && <p className="text-center text-xs text-white/50">Each ruling shows that answer on the display. Then reveal the correct answer.</p>}
     </div>
   );
 }
@@ -551,6 +624,19 @@ function FinishedControl() {
           </div>
         ))}
       </div>
+      {!!view.awards?.length && (
+        <div className="card">
+          <h3 className="mb-2 font-semibold">Awards</h3>
+          {view.awards.map((a) => (
+            <div key={a.id} className="flex items-baseline gap-2 border-b border-line py-1.5 text-sm last:border-0">
+              <span className="text-lg">{a.emoji}</span>
+              <b className="text-gold">{a.title}</b>
+              <span>{a.name}</span>
+              <span className="ml-auto text-right text-white/50">{a.detail}</span>
+            </div>
+          ))}
+        </div>
+      )}
       <button className="btn-primary py-3" disabled={busy} onClick={() => rematch(true)}>🔁 Rematch — same players, same board</button>
       <Link className="btn-ghost py-3" href={`/dashboard?rematch=${gameId}`}>🔁 Rematch with a different board…</Link>
       <Link className="btn-ghost py-3" href={`/results/${gameId}`}>📊 Results & CSV export</Link>

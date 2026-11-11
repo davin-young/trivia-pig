@@ -1,6 +1,7 @@
 import { findClue, isPlayable, type BoardContent, type Media } from "@/shared/board";
 import type { Drawing } from "@/shared/strokes";
 import { describeAction } from "./history";
+import { computeAwards, type Award } from "./awards";
 import { contestantOf, maxDailyDoubleWager, maxFinalWager, roundComplete } from "./reducer";
 import { PLAYER_ACTIONS, type FinalStage, type GameState, type LogEntry, type Settings, type Team, type Timer, type Screen, type ClueStage } from "./types";
 
@@ -31,6 +32,17 @@ export interface PlayerView {
   index: number;
   removed: boolean;
   banned: boolean;
+  bot: boolean;
+}
+
+export interface AllPlayView {
+  stage: "writing" | "judging";
+  endsAt: number;
+  hasAnswer: Record<string, boolean>;
+  judged: Record<string, boolean>;
+  /** Everything for the host; for others only judged entries (all once the answer is revealed). */
+  answers: Record<string, Drawing>;
+  typed: Record<string, string>;
 }
 
 export interface ClueView {
@@ -48,6 +60,9 @@ export interface ClueView {
   attempted: string[];
   dailyDouble: null | { contestantId: string; wager: number | null; max: number };
   nobody: boolean;
+  /** When buzzers will open on their own (autoUnlock setting), else null. */
+  autoUnlockAt: number | null;
+  allPlay: AllPlayView | null;
 }
 
 export interface FinalView {
@@ -116,7 +131,11 @@ export interface GameView {
     finalWager: number | null;
     finalAnswer: Drawing | null;
     finalTyped: string | null;
+    allPlayAnswer: Drawing | null;
+    allPlayTyped: string | null;
   };
+  /** Set once the game is finished. */
+  awards: Award[] | null;
   /** host audience only */
   host?: {
     history: HistoryItemView[];
@@ -185,7 +204,28 @@ export function buildView(
         ? { ...c.dailyDouble, max: c.dailyDouble.contestantId ? maxDailyDoubleWager(s, c.dailyDouble.contestantId) : 0 }
         : null,
       nobody: c.nobody,
+      autoUnlockAt: c.stage === "reading" ? (c.autoUnlockAt ?? null) : null,
+      allPlay: null,
     };
+    if (c.allPlay) {
+      const ap = c.allPlay;
+      const ids = new Set([...Object.keys(ap.answers), ...Object.keys(ap.typed)]);
+      const answers: Record<string, Drawing> = {};
+      const typed: Record<string, string> = {};
+      for (const id of ids) {
+        if (!isHost && !revealed && ap.judged[id] === undefined) continue;
+        if (ap.answers[id]) answers[id] = ap.answers[id];
+        if (ap.typed[id] !== undefined) typed[id] = ap.typed[id];
+      }
+      clue.allPlay = {
+        stage: ap.stage,
+        endsAt: ap.endsAt,
+        hasAnswer: Object.fromEntries([...ids].map((id) => [id, true])),
+        judged: ap.judged,
+        answers,
+        typed,
+      };
+    }
   }
 
   let final: FinalView | null = null;
@@ -240,6 +280,7 @@ export function buildView(
       index: p.index,
       removed: p.removed,
       banned: p.banned,
+      bot: !!p.bot,
     }));
 
   const view: GameView = {
@@ -267,6 +308,7 @@ export function buildView(
     lobbyLocked: s.lobbyLocked,
     version: s.version,
     serverNow: ctx.now ?? Date.now(),
+    awards: s.phase === "finished" ? computeAwards(s) : null,
   };
 
   if (ctx.audience === "player" && ctx.playerId) {
@@ -278,6 +320,7 @@ export function buildView(
       !!c &&
       !!contestantId &&
       !c.dailyDouble &&
+      !c.allPlay &&
       c.stage === "open" &&
       !s.paused &&
       (s.settings.allowRebuzz || !c.attempted.includes(contestantId)) &&
@@ -293,6 +336,8 @@ export function buildView(
       finalWager: f && contestantId ? (f.wagers[contestantId] ?? null) : null,
       finalAnswer: f && contestantId ? (f.answers[contestantId] ?? null) : null,
       finalTyped: f && contestantId ? (f.typed[contestantId] ?? null) : null,
+      allPlayAnswer: c?.allPlay && contestantId ? (c.allPlay.answers[contestantId] ?? null) : null,
+      allPlayTyped: c?.allPlay && contestantId ? (c.allPlay.typed[contestantId] ?? null) : null,
     };
   }
 

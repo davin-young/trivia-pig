@@ -39,6 +39,8 @@ const COST: Partial<Record<ClientEvent, number>> = {
   "player:join": 5,
   "player:signature": 8,
   "player:finalAnswer": 8,
+  "player:allPlayAnswer": 8,
+  "player:react": 2,
 };
 
 export function attachSocketServer(io: Server, deps: SocketAuthDeps = prismaSocketAuthDeps) {
@@ -147,6 +149,13 @@ const hostHandlers: Partial<Record<ClientEvent, Handler>> = {
     if (socket.data.hostRole === "SCOREKEEPER" && !SCOREKEEPER_INTENTS.has(intent.type)) {
       return { ok: false, error: "Scorekeepers can only adjust scores" };
     }
+    if (intent.type === "bots/add") {
+      const added = game.addBots(intent.count, `host:${socket.data.userId}`);
+      return added > 0 ? { ok: true, data: { added } } : { ok: false, error: "No room for more players" };
+    }
+    if (intent.type === "bots/remove") {
+      return game.removeBots(`host:${socket.data.userId}`) > 0 ? { ok: true } : { ok: false, error: "No bots in this game" };
+    }
     const action = game.resolveIntent(intent);
     if (!action) return { ok: false, error: "Nothing to do" };
     const res = game.dispatch(action, `host:${socket.data.userId}`);
@@ -241,4 +250,26 @@ const playerHandlers: Partial<Record<ClientEvent, Handler>> = {
     );
     return res.ok ? { ok: true } : { ok: false, error: "Answers are closed" };
   },
+  "player:allPlayAnswer": (game, socket, payload: { drawing: import("@/shared/strokes").Drawing | null; typed?: string }) => {
+    const pid = socket.data.playerId;
+    if (!pid) return { ok: false, error: "Join first" };
+    if (!drawingThrottle(socket)) return { ok: false, error: "Slow down" };
+    const res = game.dispatch(
+      { type: "player/allPlayAnswer", playerId: pid, drawing: payload.drawing ? compactDrawing(payload.drawing) : null, typed: payload.typed },
+      `player:${pid}`,
+    );
+    return res.ok ? { ok: true } : { ok: false, error: "Answers are closed" };
+  },
+  "player:react": (game, socket, payload: { emoji: string }) => {
+    const pid = socket.data.playerId;
+    if (!pid || !game.state.players[pid] || game.state.players[pid].removed) return { ok: false, error: "Join first" };
+    if (!game.state.settings.reactions) return { ok: false, error: "Reactions are off" };
+    const now = Date.now();
+    if (now - (lastReactAt.get(socket) ?? 0) < 600) return { ok: false, error: "Slow down" };
+    lastReactAt.set(socket, now);
+    game.emitReaction(pid, payload.emoji);
+    return { ok: true };
+  },
 };
+
+const lastReactAt = new WeakMap<object, number>();

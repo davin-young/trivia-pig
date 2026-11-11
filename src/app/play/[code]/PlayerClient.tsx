@@ -10,6 +10,7 @@ import { Ink } from "@/components/Ink";
 import { ConnBanner, MediaView, StatusDot, TimerBar, contestantName, formatScore, playerName, useCountdown } from "@/components/game";
 import type { GameView } from "@/engine/views";
 import { FINAL_CANVAS, NAME_CANVAS, isEmptyDrawing, type Drawing } from "@/shared/strokes";
+import { REACTIONS } from "@/shared/protocol";
 
 export default function PlayerClient({ code }: { code: string }) {
   const [kicked, setKicked] = useState<string | null>(null);
@@ -177,9 +178,149 @@ function JoinForm({ view, emit, code, rejoinName }: { view: GameView; emit: Emit
 
 function PlayerStage({ view, emit, now, onFlash }: { view: GameView; emit: Emit; now: () => number; onFlash: (s: string) => void }) {
   if (view.phase === "lobby") return <LobbyWait view={view} emit={emit} />;
-  if (view.phase === "final") return <FinalPlayer view={view} emit={emit} now={now} />;
-  if (view.phase === "finished") return <Finished view={view} />;
-  return <Buzzer view={view} emit={emit} now={now} onFlash={onFlash} />;
+  // Reactions stay out of the way while a clue is live so nobody mis-taps the buzzer.
+  const quiet =
+    view.phase === "board" ||
+    view.phase === "finished" ||
+    (view.phase === "clue" && view.clue?.stage === "revealed") ||
+    (view.phase === "final" && ["closed", "reveal", "done"].includes(view.final?.stage ?? ""));
+  return (
+    <>
+      {view.phase === "final" ? (
+        <FinalPlayer view={view} emit={emit} now={now} />
+      ) : view.phase === "finished" ? (
+        <Finished view={view} />
+      ) : view.clue?.allPlay ? (
+        <AllPlayPlayer key={view.clue.id} view={view} emit={emit} now={now} />
+      ) : (
+        <Buzzer view={view} emit={emit} now={now} onFlash={onFlash} />
+      )}
+      {view.settings.reactions && quiet && <ReactionBar emit={emit} />}
+    </>
+  );
+}
+
+function ReactionBar({ emit }: { emit: Emit }) {
+  const [sent, setSent] = useState<string | null>(null);
+  return (
+    <div className="mt-3 flex justify-between gap-1 rounded-2xl bg-white/5 p-2" role="group" aria-label="Send a reaction to the big screen">
+      {REACTIONS.map((e) => (
+        <button
+          key={e}
+          type="button"
+          aria-label={`React ${e}`}
+          className={`grid h-11 flex-1 place-items-center rounded-xl text-2xl transition-transform active:scale-125 ${sent === e ? "bg-white/15" : ""}`}
+          onClick={() => {
+            setSent(e);
+            setTimeout(() => setSent((cur) => (cur === e ? null : cur)), 500);
+            void emit("player:react", { emoji: e });
+          }}
+        >
+          {e}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** All-play clue: everyone writes (or types) an answer; the host rules on each one. */
+function AllPlayPlayer({ view, emit, now }: { view: GameView; emit: Emit; now: () => number }) {
+  const me = view.me!;
+  const c = view.clue!;
+  const ap = c.allPlay!;
+  const [answer, setAnswer] = useState<Drawing | null>(me.allPlayAnswer);
+  const [typed, setTyped] = useState(me.allPlayTyped ?? "");
+  const [saved, setSaved] = useState<"idle" | "saving" | "saved" | "error">(me.allPlayAnswer || me.allPlayTyped ? "saved" : "idle");
+  const [msg, setMsg] = useState<string | null>(null);
+  const pending = useRef<NodeJS.Timeout | null>(null);
+  const writing = ap.stage === "writing" && c.stage !== "revealed";
+  const left = useCountdown(writing ? ap.endsAt : null, now);
+
+  const submit = useCallback(
+    async (d: Drawing | null, t: string) => {
+      setSaved("saving");
+      const r = await emit("player:allPlayAnswer", { drawing: d && !isEmptyDrawing(d) ? d : null, typed: t || undefined });
+      setSaved(r.ok ? "saved" : "error");
+      setMsg(r.ok ? null : r.error);
+    },
+    [emit],
+  );
+  const queue = (d: Drawing | null, t: string) => {
+    if (pending.current) clearTimeout(pending.current);
+    setSaved("idle");
+    pending.current = setTimeout(() => void submit(d, t), 2200);
+  };
+  useEffect(() => () => {
+    if (pending.current) clearTimeout(pending.current);
+  }, []);
+  // Flush right before time runs out.
+  useEffect(() => {
+    if (left !== null && left < 900 && left > 0 && saved === "idle") {
+      if (pending.current) clearTimeout(pending.current);
+      void submit(answer, typed);
+    }
+  }, [left, saved, answer, typed, submit]);
+
+  const header = (
+    <div className="rounded-xl bg-[var(--board)] p-3 text-center">
+      <div className="text-xs uppercase text-white/60">{c.category} · ${c.value} · everybody plays</div>
+      <div className="mt-1 text-sm">{c.text}</div>
+      {c.media && <MediaView media={c.media} className="mx-auto mt-2 max-h-40 rounded" />}
+      {c.stage === "revealed" && <div className="clue-text mt-2 text-lg text-gold">{c.answer}</div>}
+    </div>
+  );
+
+  if (!me.contestantId) return <Center>{header}<p className="text-white/60">Watch the big screen.</p></Center>;
+
+  if (writing) {
+    return (
+      <div className="flex flex-col gap-3">
+        {header}
+        {view.timer && <TimerBar startedAt={view.timer.startedAt} endsAt={view.timer.endsAt} now={now} />}
+        <DrawingPad
+          width={FINAL_CANVAS.w}
+          height={FINAL_CANVAS.h}
+          multiColor={view.settings.multiColor}
+          initial={me.allPlayAnswer}
+          onChange={(d) => {
+            setAnswer(d);
+            queue(d, typed);
+          }}
+          placeholder="Write your answer"
+        />
+        <input
+          className="input"
+          placeholder="Or type it (optional)"
+          maxLength={200}
+          value={typed}
+          onChange={(e) => {
+            setTyped(e.target.value);
+            queue(answer, e.target.value);
+          }}
+        />
+        <button className="btn-primary py-3 text-lg" onClick={() => void submit(answer, typed)} disabled={saved === "saving"}>
+          {saved === "saved" ? "✓ Answer saved (tap to resave)" : saved === "saving" ? "Saving…" : "Lock in answer"}
+        </button>
+        {msg && <div className="text-red-300">{msg}</div>}
+      </div>
+    );
+  }
+
+  const judged = ap.judged[me.contestantId];
+  return (
+    <div className="flex flex-1 flex-col items-center gap-3 text-center">
+      {header}
+      <div className="text-5xl">{judged === true ? "✅" : judged === false ? "❌" : "🤞"}</div>
+      <h2 className="text-xl font-bold">{judged === true ? `Correct! +$${c.value}` : judged === false ? "Not this time" : "Pencils down! Watch the big screen"}</h2>
+      {me.allPlayAnswer ? (
+        <Ink drawing={me.allPlayAnswer} className="aspect-video w-full max-w-sm rounded-xl bg-[var(--board-deep)]" />
+      ) : me.allPlayTyped ? (
+        <p className="clue-text text-lg">{me.allPlayTyped}</p>
+      ) : (
+        <p className="text-white/60">You did not answer this one.</p>
+      )}
+    </div>
+  );
 }
 
 function LobbyWait({ view, emit }: { view: GameView; emit: Emit }) {
@@ -459,6 +600,15 @@ function Finished({ view }: { view: GameView }) {
       <div className="text-6xl">{place === 1 ? "🏆" : "👏"}</div>
       <h2 className="text-2xl font-bold">{place === 1 ? "You won!" : place ? `You finished #${place}` : "Game over"}</h2>
       <div className="money text-5xl">{formatScore(view.scores[me.contestantId ?? ""] ?? 0)}</div>
+      {(view.awards ?? [])
+        .filter((a) => a.winnerId === me.playerId || a.winnerId === me.contestantId)
+        .map((a) => (
+          <div key={a.id} className="w-full max-w-xs rounded-xl bg-white/10 p-3">
+            <div className="text-3xl">{a.emoji}</div>
+            <div className="font-bold text-gold">{a.title}</div>
+            <div className="text-sm text-white/70">{a.detail}</div>
+          </div>
+        ))}
       <p className="text-white/60">Thanks for playing! Stay here — if the host starts a rematch you&apos;ll be moved automatically.</p>
     </Center>
   );

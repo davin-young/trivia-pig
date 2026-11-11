@@ -255,6 +255,9 @@ export function SettingsPanel() {
       <NumField label="Early-buzz lockout (ms, 0 = off)" value={s.earlyBuzzLockoutMs} min={0} max={5000} onSave={(v) => set({ earlyBuzzLockoutMs: v })} />
       <Toggle label="Players who answered wrong can buzz again" checked={s.allowRebuzz} onChange={(v) => set({ allowRebuzz: v })} />
       <Toggle label="Latency-fair buzzing (first press wins, not best Wi-Fi)" checked={s.fairBuzz} onChange={(v) => set({ fairBuzz: v })} />
+      <Toggle label="Open buzzers automatically after reading time (lights count down on the display)" checked={s.autoUnlock} onChange={(v) => set({ autoUnlock: v })} />
+      <NumField label="All-play writing time (seconds)" value={s.allPlayTimerSec} min={5} max={180} onSave={(v) => set({ allPlayTimerSec: v })} />
+      <Toggle label="Emoji reactions from phones on the display" checked={s.reactions} onChange={(v) => set({ reactions: v })} />
       <h3 className="mt-2 font-semibold">Daily Doubles</h3>
       <Field label="Placement">
         <div className="flex gap-2">

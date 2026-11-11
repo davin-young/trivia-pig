@@ -33,10 +33,10 @@ function connect(auth: Record<string, unknown>, cookie?: string) {
     latest = v;
     for (let i = waiters.length - 1; i >= 0; i--) if (waiters[i][0](v)) waiters.splice(i, 1)[0][1](v);
   });
-  const until = (pred: (v: GameView) => boolean, label: string) =>
+  const until = (pred: (v: GameView) => boolean, label: string, ms = 5000) =>
     new Promise<GameView>((resolve, reject) => {
       if (latest && pred(latest)) return resolve(latest);
-      const t = setTimeout(() => reject(new Error(`timeout waiting for: ${label}`)), 5000);
+      const t = setTimeout(() => reject(new Error(`timeout waiting for: ${label}`)), ms);
       waiters.push([pred, (v) => (clearTimeout(t), resolve(v))]);
     });
   const emit = (ev: string, payload: unknown) =>
@@ -137,7 +137,54 @@ async function main() {
   await display.until((v) => v.phase === "finished", "finished");
   console.log("  ✓ game finished");
 
+  const awarded = await display.until((v) => Array.isArray(v.awards), "awards on the winner screen");
+  assert(Array.isArray(awarded.awards), "finished game carries awards");
   for (const c of [host, display, p1, p2]) c.s.close();
+
+  // ---- second game: auto-open buzzers, practice bots, all-play clue, reactions ----
+  const created2 = await api("/api/games", { method: "POST", cookie, body: JSON.stringify({ boardId: board.id, settings: { autoUnlock: true, allPlayTimerSec: 5 } }) });
+  const game2 = await created2.json();
+  assert(created2.ok, `second game created (${game2.code})`);
+  const h2 = connect({ role: "host", code: game2.code }, cookie);
+  const d2 = connect({ role: "display", code: game2.code });
+  const q1 = connect({ role: "player", code: game2.code });
+  await h2.until((v) => v.phase === "lobby", "lobby 2");
+  assert((await q1.emit("player:join", { name: "Cara", signature: null })).ok, "player joins second game");
+  const botsAdded = await h2.emit("host:action", { action: { type: "bots/add", count: 2 } });
+  assert(botsAdded.ok, "host adds practice bots");
+  const withBots = await d2.until((v) => v.players.filter((p) => p.bot).length === 2, "bots in lobby");
+  assert(withBots.players.length === 3, "lobby has 1 human and 2 bots");
+  assert(!(await q1.emit("host:action", { action: { type: "bots/add", count: 1 } })).ok, "players cannot add bots");
+
+  await h2.emit("host:action", { action: { type: "game/start" } });
+  const hb = await h2.until((v) => v.phase === "board", "board 2");
+  const cl = hb.host!.fullBoard.rounds[0].categories[0].clues;
+  await h2.emit("host:action", { action: { type: "clue/open", clueId: cl[0].id } });
+  const reading = await d2.until((v) => v.phase === "clue", "clue 2 open");
+  assert(reading.clue?.stage === "reading" && !!reading.clue.autoUnlockAt, "display knows when the buzzers will open");
+  const autoOpened = await d2.until((v) => v.clue?.stage === "open" || v.clue?.stage === "answering", "buzzers opened by themselves", 17000);
+  assert(!!autoOpened, "buzzers open automatically after the reading time");
+  await h2.emit("host:action", { action: { type: "clue/reveal" } });
+  await h2.emit("host:action", { action: { type: "clue/close" } });
+
+  const reacted = new Promise<{ cue: string; id?: string }>((resolve) => d2.s.on("fx", (fx: { cue: string; id?: string }) => fx.cue === "react" && resolve(fx)));
+  assert((await q1.emit("player:react", { emoji: "🔥" })).ok, "player sends a reaction");
+  assert((await reacted).id === "🔥", "display receives the reaction");
+  assert(!(await q1.emit("player:react", { emoji: "<script>" })).ok, "unknown reactions are rejected");
+
+  await h2.emit("host:action", { action: { type: "clue/open", clueId: cl[1].id, allPlay: true } });
+  await q1.until((v) => v.clue?.allPlay?.stage === "writing", "all-play writing on phone");
+  assert((await q1.emit("player:allPlayAnswer", { drawing: null, typed: "my guess" })).ok, "player submits an all-play answer");
+  const allIn = await d2.until((v) => Object.keys(v.clue?.allPlay?.hasAnswer ?? {}).length === 3, "bots answer the all-play too", 9000);
+  assert(Object.keys(allIn.clue!.allPlay!.typed).length === 0 && !JSON.stringify(allIn).includes("my guess"), "display cannot see all-play answers before judging");
+  const judging = await h2.until((v) => v.clue?.allPlay?.stage === "judging", "all-play closes when the timer ends", 9000);
+  const cara = judging.players.find((p) => p.name === "Cara")!.id;
+  assert(judging.clue!.allPlay!.typed[cara] === "my guess", "host sees every all-play answer");
+  await h2.emit("host:action", { action: { type: "allPlay/judge", contestantId: cara, correct: true } });
+  const shown = await d2.until((v) => v.clue?.allPlay?.judged[cara] === true, "ruling shown on display");
+  assert(shown.clue!.allPlay!.typed[cara] === "my guess" && shown.scores[cara] === 200, "judged answer is shown and scored");
+  assert(shown.clue!.answer === null, "correct answer still hidden until revealed");
+  for (const c of [h2, d2, q1]) c.s.close();
   console.log("\nAll smoke checks passed.");
   process.exit(0);
 }

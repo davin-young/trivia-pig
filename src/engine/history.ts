@@ -105,7 +105,13 @@ export function describeAction(a: GameAction, state: GameState): string {
     case "game/start":
       return "Started game";
     case "clue/open":
-      return "Opened clue";
+      return a.allPlay ? "Opened clue (all-play)" : "Opened clue";
+    case "allPlay/close":
+      return "Closed all-play answers";
+    case "allPlay/judge":
+      return `All-play: ${cname(a.contestantId)} ${a.correct ? "correct" : "incorrect"}`;
+    case "player/allPlayAnswer":
+      return `${pname(a.playerId)} answered`;
     case "buzzers/unlock":
       return "Unlocked buzzers";
     case "buzzers/lock":

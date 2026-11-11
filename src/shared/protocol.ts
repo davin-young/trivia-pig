@@ -15,6 +15,11 @@ const int = z.number().int().min(-10_000_000).max(10_000_000);
 export const SOUNDBOARD = ["applause", "boo", "drumroll", "timer", "ding", "buzzer", "laugh", "fanfare"] as const;
 export type SoundboardId = (typeof SOUNDBOARD)[number];
 
+/** Emoji players can send to the big screen. */
+export const REACTIONS = ["👏", "😂", "🔥", "😱", "🤔", "💀", "🎉", "❤️"] as const;
+
+export const BOT_NAMES = ["Botty McBuzz", "Ada Bot", "Sir Buzzalot", "Robo Trebek", "Quizzy", "Beep Boop", "Dot Matrix", "Captain Clue"];
+
 export const hostIntentSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("settings/update"), settings: settingsSchema.partial().extend({ sound: settingsSchema.shape.sound.unwrap().partial().optional() }) }),
   z.object({ type: z.literal("lobby/lock"), locked: z.boolean() }),
@@ -30,7 +35,11 @@ export const hostIntentSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("team/assign"), playerId: id, teamId: id.nullable() }),
   z.object({ type: z.literal("team/autoBalance") }),
   z.object({ type: z.literal("game/start") }),
-  z.object({ type: z.literal("clue/open"), clueId: id }),
+  z.object({ type: z.literal("clue/open"), clueId: id, allPlay: z.boolean().optional() }),
+  z.object({ type: z.literal("allPlay/close") }),
+  z.object({ type: z.literal("allPlay/judge"), contestantId: id, correct: z.boolean() }),
+  z.object({ type: z.literal("bots/add"), count: z.number().int().min(1).max(8) }),
+  z.object({ type: z.literal("bots/remove") }),
   z.object({ type: z.literal("buzzers/unlock") }),
   z.object({ type: z.literal("buzzers/lock") }),
   z.object({ type: z.literal("clue/judge"), correct: z.boolean(), playerId: id.optional() }),
@@ -68,6 +77,7 @@ export type HostIntent = z.infer<typeof hostIntentSchema>;
 /** Intents a scorekeeper may send. Everything else needs host/co-host. */
 export const SCOREKEEPER_INTENTS: ReadonlySet<HostIntent["type"]> = new Set([
   "clue/judge",
+  "allPlay/judge",
   "score/adjust",
   "score/set",
   "dd/wager",
@@ -98,6 +108,8 @@ export const clientEvents = {
   "player:buzz": z.object({}),
   "player:finalWager": z.object({ amount: z.number().int().min(0).max(10_000_000) }),
   "player:finalAnswer": z.object({ drawing: drawingSchema.nullable(), typed: z.string().max(200).optional() }),
+  "player:allPlayAnswer": z.object({ drawing: drawingSchema.nullable(), typed: z.string().max(200).optional() }),
+  "player:react": z.object({ emoji: z.enum(REACTIONS) }),
   "presence:ping": z.object({}),
 } as const;
 export type ClientEvent = keyof typeof clientEvents;

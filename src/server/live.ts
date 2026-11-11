@@ -6,7 +6,8 @@ import { activePlayers, resolveDailyDoubles, type Cue } from "@/engine/reducer";
 import { settingsSchema, type GameAction, type GameState, type LogEntry, type Settings, type Setup } from "@/engine/types";
 import { buildView, type Audience, type GameView } from "@/engine/views";
 import { boardContentSchema, findClue } from "@/shared/board";
-import { TEAM_COLORS, type HostIntent, type PresenceStatus, type PresenceView } from "@/shared/protocol";
+import { BOT_NAMES, TEAM_COLORS, type HostIntent, type PresenceStatus, type PresenceView } from "@/shared/protocol";
+import { computeAwards } from "@/engine/awards";
 import { prisma } from "./db";
 import { BUZZ_WINDOW_MS, orderBuzzes, type PendingBuzz } from "./buzzQueue";
 
@@ -21,6 +22,7 @@ export interface SocketData {
 export type GameSocket = Socket<Record<string, never>, Record<string, never>, Record<string, never>, SocketData>;
 
 const RECONNECT_GRACE_MS = 20_000;
+const BOT_GUESSES = ["What is... 42?", "Who is Beep Boop?", "What is electricity?", "I was told there would be no math", "What is a toaster?", "Who is my creator?"];
 const NOBODY_RETURN_MS = 4_000;
 
 /** Summary stored on the Game row for dashboards/history (full state is rebuilt from the log). */
@@ -32,6 +34,7 @@ export function summarize(s: GameState) {
     scores: s.scores,
     players: s.playerOrder.map((id) => s.players[id]).filter((p) => !p.removed).map((p) => ({ id: p.id, name: p.name, teamId: p.teamId })),
     teams: s.teams,
+    awards: s.phase === "finished" ? computeAwards(s) : [],
   };
 }
 
@@ -115,6 +118,7 @@ export class LiveGame {
     this.broadcast();
     for (const cue of fx) this.emitFx(cue);
     if (action) this.scheduleAutomation(action);
+    this.syncTimers();
     if (action?.type === "player/kick" || action?.type === "player/ban") this.kickSockets(action.playerId, action.type);
   }
 
@@ -135,12 +139,116 @@ export class LiveGame {
    */
   restoreAutomation() {
     this.scheduleFinalClose();
+    this.syncTimers();
     const c = this.state.clue;
     if (c?.nobody) {
       const clueId = c.id;
       this.later("nobody", NOBODY_RETURN_MS, () => {
         if (this.state.clue?.id === clueId && this.state.clue?.nobody) this.dispatch({ type: "clue/close" }, "system");
       });
+    }
+  }
+
+  /**
+   * Arm timers that follow from the current state (safe to call after every
+   * change, undo, or restart; each callback re-checks the state when it fires).
+   */
+  private syncTimers() {
+    const c = this.state.clue;
+    if (c && c.stage === "reading" && c.autoUnlockAt && !c.allPlay && !c.dailyDouble && !this.state.paused) {
+      const id = c.id;
+      this.later("autoUnlock", Math.max(0, c.autoUnlockAt - Date.now()), () => {
+        const cur = this.state.clue;
+        if (cur?.id === id && cur.stage === "reading" && cur.autoUnlockAt && !this.state.paused) this.dispatch({ type: "buzzers/unlock" }, "system");
+      });
+    } else this.cancel("autoUnlock");
+    if (c?.allPlay?.stage === "writing") {
+      const id = c.id;
+      this.later("allPlay", Math.max(0, c.allPlay.endsAt - Date.now() + 1600), () => {
+        if (this.state.clue?.id === id && this.state.clue.allPlay?.stage === "writing") this.dispatch({ type: "allPlay/close" }, "system");
+      });
+    } else this.cancel("allPlay");
+    this.driveBots();
+  }
+
+  private cancel(key: string) {
+    const t = this.timers.get(key);
+    if (t) clearTimeout(t);
+    this.timers.delete(key);
+  }
+
+  // ------------------------------------------------------------------- bots
+
+  /** Things each bot has already decided to do, so a state change never double-books them. */
+  private botPlans = new Set<string>();
+
+  private bots() {
+    return activePlayers(this.state).filter((p) => p.bot);
+  }
+
+  addBots(count: number, by: string): number {
+    let added = 0;
+    const taken = new Set(activePlayers(this.state).map((p) => p.name));
+    for (let i = 0; i < count; i++) {
+      const name = BOT_NAMES.find((n) => !taken.has(n)) ?? `Bot ${nanoid(3)}`;
+      taken.add(name);
+      const playerId = `bot_${nanoid(8)}`;
+      if (this.dispatch({ type: "player/join", playerId, name, signature: null, bot: true }, by).ok) added++;
+    }
+    return added;
+  }
+
+  removeBots(by: string): number {
+    let n = 0;
+    for (const b of this.bots()) if (this.dispatch({ type: "player/kick", playerId: b.id }, by).ok) n++;
+    return n;
+  }
+
+  /** Practice bots: buzz with human-ish delays, write all-play and Final answers, place wagers. */
+  private driveBots() {
+    const s = this.state;
+    const bots = this.bots();
+    if (!bots.length || s.paused) return;
+    const plan = (key: string, minMs: number, maxMs: number, fn: () => void) => {
+      if (this.botPlans.has(key)) return;
+      this.botPlans.add(key);
+      if (this.botPlans.size > 5000) this.botPlans.clear();
+      this.later(`bot:${key}`, minMs + Math.random() * (maxMs - minMs), fn);
+    };
+    const c = s.clue;
+    if (c && !c.dailyDouble && !c.allPlay && c.stage === "open") {
+      for (const b of bots) {
+        // Each bot decides once per opening of the buzzers; about 2 in 3 go for it.
+        plan(`buzz:${c.id}:${c.attempted.length}:${b.id}`, 450, 3200, () => {
+          const cur = this.state.clue;
+          if (cur?.id === c.id && cur.stage === "open" && Math.random() < 0.67) void this.buzz(b.id, 0);
+        });
+      }
+    }
+    if (c?.allPlay?.stage === "writing") {
+      for (const b of bots) {
+        plan(`allplay:${c.id}:${b.id}`, 2000, Math.max(2500, Math.min(9000, c.allPlay.endsAt - Date.now() - 500)), () => {
+          this.dispatch({ type: "player/allPlayAnswer", playerId: b.id, drawing: null, typed: BOT_GUESSES[Math.floor(Math.random() * BOT_GUESSES.length)] }, `player:${b.id}`);
+        });
+      }
+    }
+    const f = s.final;
+    if (f && ["category", "clue", "writing"].includes(f.stage)) {
+      for (const b of bots) {
+        const cid = s.settings.mode === "team" ? b.teamId : b.id;
+        if (!cid || !f.eligible.includes(cid)) continue;
+        if (f.wagers[cid] === undefined && s.settings.mode !== "team") {
+          plan(`wager:${b.id}`, 1500, 5000, () => {
+            const max = Math.max(0, this.state.scores[cid] ?? 0);
+            this.dispatch({ type: "player/finalWager", playerId: b.id, amount: Math.round((Math.random() * max) / 50) * 50 }, `player:${b.id}`);
+          });
+        }
+        if (f.stage === "writing" && s.settings.mode !== "team") {
+          plan(`final:${b.id}`, 3000, 9000, () => {
+            this.dispatch({ type: "player/finalAnswer", playerId: b.id, drawing: null, typed: BOT_GUESSES[Math.floor(Math.random() * BOT_GUESSES.length)] }, `player:${b.id}`);
+          });
+        }
+      }
     }
   }
 
@@ -264,6 +372,11 @@ export class LiveGame {
     }
   }
 
+  /** Ephemeral emoji reaction: shown on displays, never stored. */
+  emitReaction(playerId: string, emoji: string) {
+    for (const socket of this.sockets.values()) if (socket.data.role === "display") (socket as Socket).emit("fx", { cue: "react", id: emoji, playerId });
+  }
+
   emitSound(id: string) {
     for (const socket of this.sockets.values()) if (socket.data.role === "display") (socket as Socket).emit("fx", { cue: "sfx", id });
   }
@@ -318,7 +431,7 @@ export class LiveGame {
     const online = new Set(sockets.filter((s) => s.data.role === "player" && s.data.playerId).map((s) => s.data.playerId!));
     const players: Record<string, PresenceStatus> = {};
     for (const id of this.state.playerOrder) {
-      if (online.has(id)) players[id] = "online";
+      if (online.has(id) || this.state.players[id]?.bot) players[id] = "online";
       else {
         const last = this.playerLastSeen.get(id);
         players[id] = last && now - last < RECONNECT_GRACE_MS ? "reconnecting" : "offline";

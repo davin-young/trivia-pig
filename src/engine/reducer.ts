@@ -15,6 +15,7 @@ export type Cue =
   | { cue: "join"; playerId: string }
   | { cue: "boardFill" }
   | { cue: "clueOpen" }
+  | { cue: "buzzersOpen" }
   | { cue: "dailyDouble" }
   | { cue: "buzz"; playerId: string }
   | { cue: "earlyBuzz"; playerId: string }
@@ -53,6 +54,7 @@ export function initialState(setup: Setup): GameState {
     lobbyLocked: false,
     bannedNames: [],
     scoreEvents: [],
+    buzzStats: {},
     startedAt: null,
     finishedAt: null,
     version: 0,
@@ -119,6 +121,15 @@ function addScore(s: GameState, entry: LogEntry, contestantId: string, delta: nu
   });
 }
 
+/**
+ * How long a clue needs to be read aloud before buzzers open automatically:
+ * about 3 words per second plus a beat, between 2 and 15 seconds.
+ */
+export function readingTimeMs(text: string): number {
+  const words = text.trim().split(/\s+/).filter(Boolean).length;
+  return Math.min(15_000, Math.max(2_000, 1_200 + words * 330));
+}
+
 function clueInCurrentRound(s: GameState, clueId: string) {
   const found = findClue(s.board, clueId);
   if (!found || found.round !== s.roundIndex) return null;
@@ -182,6 +193,7 @@ function reduce(s: GameState, entry: LogEntry, fx: Cue[]): boolean {
         index: s.playerOrder.length,
         removed: false,
         banned: false,
+        ...(a.bot ? { bot: true } : {}),
       };
       s.playerOrder.push(a.playerId);
       if (s.scores[a.playerId] === undefined) s.scores[a.playerId] = 0;
@@ -197,7 +209,7 @@ function reduce(s: GameState, entry: LogEntry, fx: Cue[]): boolean {
     }
     case "player/buzz": {
       const c = s.clue;
-      if (s.phase !== "clue" || !c || c.dailyDouble || s.paused) return false;
+      if (s.phase !== "clue" || !c || c.dailyDouble || c.allPlay || s.paused) return false;
       const contestant = contestantOf(s, a.playerId);
       if (!contestant) return false;
       if (c.stage === "reading") {
@@ -216,6 +228,13 @@ function reduce(s: GameState, entry: LogEntry, fx: Cue[]): boolean {
       if (c.stage === "open") {
         c.stage = "answering";
         c.answering = a.playerId;
+        if (c.openedAt !== null) {
+          const ms = Math.max(0, at - c.openedAt);
+          const st = (s.buzzStats[a.playerId] ??= { wins: 0, totalMs: 0, fastestMs: ms });
+          st.wins++;
+          st.totalMs += ms;
+          st.fastestMs = Math.min(st.fastestMs, ms);
+        }
         s.timer =
           s.settings.answerTimerSec > 0
             ? { startedAt: at, endsAt: at + s.settings.answerTimerSec * 1000, label: "answer" }
@@ -245,6 +264,17 @@ function reduce(s: GameState, entry: LogEntry, fx: Cue[]): boolean {
       if (!contestant || !f.eligible.includes(contestant)) return false;
       if (a.drawing) f.answers[contestant] = a.drawing;
       if (a.typed !== undefined) f.typed[contestant] = a.typed;
+      return true;
+    }
+
+    case "player/allPlayAnswer": {
+      const ap = s.clue?.allPlay;
+      if (s.phase !== "clue" || !ap || ap.stage !== "writing") return false;
+      if (at > ap.endsAt + 1500) return false;
+      const contestant = contestantOf(s, a.playerId);
+      if (!contestant) return false;
+      if (a.drawing) ap.answers[contestant] = a.drawing;
+      if (a.typed !== undefined) ap.typed[contestant] = a.typed;
       return true;
     }
 
@@ -368,25 +398,63 @@ function reduce(s: GameState, entry: LogEntry, fx: Cue[]): boolean {
         lockouts: {},
         dailyDouble: isDD ? { contestantId: s.controlId ?? "", wager: null } : null,
         nobody: false,
+        openedAt: null,
+        autoUnlockAt: null,
+        allPlay: null,
       };
       s.clue = clue;
       s.used[a.clueId] = true;
       s.phase = "clue";
       s.timer = null;
+      if (a.allPlay && !isDD) {
+        const endsAt = at + s.settings.allPlayTimerSec * 1000;
+        clue.allPlay = { stage: "writing", endsAt, answers: {}, typed: {}, judged: {} };
+        s.timer = { startedAt: at, endsAt, label: "allplay" };
+        fx.push({ cue: "clueOpen" }, { cue: "think" });
+        return true;
+      }
+      if (s.settings.autoUnlock && !isDD) clue.autoUnlockAt = at + readingTimeMs(found.clue.text);
       fx.push(isDD ? { cue: "dailyDouble" } : { cue: "clueOpen" });
       return true;
     }
     case "buzzers/unlock": {
       const c = s.clue;
-      if (!c || c.dailyDouble || c.stage !== "reading") return false;
+      if (!c || c.dailyDouble || c.allPlay || c.stage !== "reading") return false;
       c.stage = "open";
       c.buzzes = [];
+      c.openedAt = at;
+      c.autoUnlockAt = null;
+      fx.push({ cue: "buzzersOpen" });
       return true;
     }
     case "buzzers/lock": {
       const c = s.clue;
       if (!c || c.stage !== "open") return false;
       c.stage = "reading";
+      c.openedAt = null;
+      c.autoUnlockAt = null;
+      return true;
+    }
+    case "allPlay/close": {
+      const ap = s.clue?.allPlay;
+      if (!ap || ap.stage !== "writing") return false;
+      ap.stage = "judging";
+      s.timer = null;
+      fx.push({ cue: "thinkStop" });
+      return true;
+    }
+    case "allPlay/judge": {
+      const c = s.clue;
+      const ap = c?.allPlay;
+      if (s.phase !== "clue" || !c || !ap || ap.stage !== "judging") return false;
+      if (!isContestant(s, a.contestantId)) return false;
+      const prev = ap.judged[a.contestantId];
+      if (prev === a.correct) return false;
+      // Right answers earn the clue value; wrong answers cost nothing on an all-play.
+      if (a.correct) addScore(s, entry, a.contestantId, c.value, "correct", c.id);
+      else if (prev === true) addScore(s, entry, a.contestantId, -c.value, "adjust", c.id);
+      ap.judged[a.contestantId] = a.correct;
+      fx.push({ cue: a.correct ? "correct" : "incorrect" });
       return true;
     }
     case "dd/wager": {
@@ -400,7 +468,7 @@ function reduce(s: GameState, entry: LogEntry, fx: Cue[]): boolean {
     }
     case "clue/judge": {
       const c = s.clue;
-      if (s.phase !== "clue" || !c || c.stage === "revealed") return false;
+      if (s.phase !== "clue" || !c || c.allPlay || c.stage === "revealed") return false;
       if (c.dailyDouble) {
         const { contestantId, wager } = c.dailyDouble;
         if (wager === null || !contestantId) return false;
@@ -428,6 +496,7 @@ function reduce(s: GameState, entry: LogEntry, fx: Cue[]): boolean {
         c.answering = null;
         c.stage = "open";
         c.buzzes = [];
+        c.openedAt = at;
         s.timer = null;
         fx.push({ cue: "incorrect" });
       }
@@ -438,8 +507,11 @@ function reduce(s: GameState, entry: LogEntry, fx: Cue[]): boolean {
       if (!c || c.stage === "revealed") return false;
       c.stage = "revealed";
       c.answering = null;
+      c.autoUnlockAt = null;
+      if (c.allPlay) c.allPlay.stage = "judging";
       s.timer = null;
       fx.push({ cue: "reveal" });
+      if (c.allPlay) fx.push({ cue: "thinkStop" });
       return true;
     }
     case "clue/nobody": {
@@ -448,6 +520,8 @@ function reduce(s: GameState, entry: LogEntry, fx: Cue[]): boolean {
       c.stage = "revealed";
       c.answering = null;
       c.nobody = true;
+      c.autoUnlockAt = null;
+      if (c.allPlay) c.allPlay.stage = "judging";
       s.timer = null;
       fx.push({ cue: "reveal" });
       return true;

@@ -6,6 +6,8 @@ import { requireUser } from "@/server/session";
 import { gameForUser, gameLog, gameSetup } from "@/server/gameAccess";
 import { getManager } from "@/server/live";
 import { buildResults } from "@/server/results";
+import { computeAwards } from "@/engine/awards";
+import { replay } from "@/engine/reducer";
 
 export const metadata = { title: "Results" };
 export const dynamic = "force-dynamic";
@@ -21,7 +23,10 @@ export default async function ResultsPage({ params }: { params: Promise<{ id: st
   if (!found) notFound();
   const { game, role } = found;
   const live = getManager().cached(game.id);
-  const res = buildResults(live?.history.setup ?? gameSetup(game), live?.history.log ?? gameLog(game));
+  const setup = live?.history.setup ?? gameSetup(game);
+  const log = live?.history.log ?? gameLog(game);
+  const res = buildResults(setup, log);
+  const awards = game.status === "FINISHED" ? computeAwards(live?.state ?? replay(setup, log)) : [];
   const { standings, contestants, clueRows } = res;
   const top = standings[0]?.score;
   const canRematch = role === "HOST" || role === "COHOST";
@@ -55,6 +60,22 @@ export default async function ResultsPage({ params }: { params: Promise<{ id: st
           ))}
           {!standings.length && <div className="card text-white/60">No contestants.</div>}
         </section>
+
+        {awards.length > 0 && (
+          <section>
+            <h2 className="mb-2 text-lg font-semibold">Awards</h2>
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+              {awards.map((a) => (
+                <div key={a.id} className="card !p-3">
+                  <div className="text-2xl">{a.emoji}</div>
+                  <div className="text-sm font-semibold text-gold">{a.title}</div>
+                  <div className="truncate font-semibold">{a.name}</div>
+                  <div className="text-xs text-white/50">{a.detail}</div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
         {clueRows.length > 0 && (
           <section className="card overflow-x-auto !p-0">

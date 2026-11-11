@@ -15,6 +15,12 @@ export const settingsSchema = z.object({
   allowRebuzz: z.boolean().default(false),
   /** Compensate for each phone's network latency so the first *press* wins, not the first packet. */
   fairBuzz: z.boolean().default(true),
+  /** Open the buzzers automatically once the clue has had time to be read aloud. */
+  autoUnlock: z.boolean().default(false),
+  /** Seconds everyone gets to write on an all-play clue. */
+  allPlayTimerSec: z.number().int().min(5).max(180).default(30),
+  /** Let players send emoji reactions to the big screen. */
+  reactions: z.boolean().default(true),
   dailyDoublePlacement: z.enum(["author", "random"]).default("author"),
   /** Random placement: how many Daily Doubles per round, by round kind. */
   dailyDoublesSingle: z.number().int().min(0).max(5).default(1),
@@ -50,6 +56,8 @@ export interface Player {
   index: number;
   removed: boolean;
   banned: boolean;
+  /** Practice bot driven by the server (rehearsal mode). */
+  bot?: boolean;
 }
 
 export interface Team {
@@ -92,6 +100,28 @@ export interface ActiveClue {
   dailyDouble: null | { contestantId: string; wager: number | null };
   /** Set by "nobody got it": the display shows the answer and the server returns to the board. */
   nobody: boolean;
+  /** When the buzzers last opened (for reaction-time stats). */
+  openedAt: number | null;
+  /** With the autoUnlock setting: when the server will open the buzzers. */
+  autoUnlockAt: number | null;
+  /** All-play clue: every contestant writes an answer instead of buzzing. */
+  allPlay: AllPlayState | null;
+}
+
+export interface AllPlayState {
+  stage: "writing" | "judging";
+  endsAt: number;
+  answers: Record<string, Drawing>;
+  typed: Record<string, string>;
+  /** contestantId -> marked correct? (absent = not judged yet) */
+  judged: Record<string, boolean>;
+}
+
+/** Per-player buzzer stats, kept for the post-game awards. */
+export interface BuzzStat {
+  wins: number;
+  totalMs: number;
+  fastestMs: number;
 }
 
 export type FinalStage = "category" | "clue" | "writing" | "closed" | "reveal" | "done";
@@ -137,6 +167,7 @@ export interface GameState {
   lobbyLocked: boolean;
   bannedNames: string[];
   scoreEvents: ScoreEvent[];
+  buzzStats: Record<string, BuzzStat>;
   startedAt: number | null;
   finishedAt: number | null;
   /** Monotonic counter of applied actions, used by clients to detect changes. */
@@ -150,11 +181,12 @@ export interface GameState {
 
 export type GameAction =
   // players
-  | { type: "player/join"; playerId: string; name: string; signature: Drawing | null; teamId?: string | null }
+  | { type: "player/join"; playerId: string; name: string; signature: Drawing | null; teamId?: string | null; bot?: boolean }
   | { type: "player/signature"; playerId: string; signature: Drawing | null }
   | { type: "player/buzz"; playerId: string }
   | { type: "player/finalWager"; playerId: string; amount: number }
   | { type: "player/finalAnswer"; playerId: string; drawing: Drawing | null; typed?: string }
+  | { type: "player/allPlayAnswer"; playerId: string; drawing: Drawing | null; typed?: string }
   // lobby & management
   | { type: "settings/update"; settings: Partial<Settings> }
   | { type: "lobby/lock"; locked: boolean }
@@ -171,7 +203,9 @@ export type GameAction =
   | { type: "team/autoBalance"; assignments: Record<string, string> }
   | { type: "game/start"; dailyDoubles: Record<number, string[]> }
   // clue flow
-  | { type: "clue/open"; clueId: string }
+  | { type: "clue/open"; clueId: string; allPlay?: boolean }
+  | { type: "allPlay/close" }
+  | { type: "allPlay/judge"; contestantId: string; correct: boolean }
   | { type: "buzzers/unlock" }
   | { type: "buzzers/lock" }
   | { type: "clue/judge"; correct: boolean; playerId?: string }
@@ -224,4 +258,5 @@ export const PLAYER_ACTIONS: ReadonlySet<ActionType> = new Set([
   "player/buzz",
   "player/finalWager",
   "player/finalAnswer",
+  "player/allPlayAnswer",
 ]);

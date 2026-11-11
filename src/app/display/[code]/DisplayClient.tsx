@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import confetti from "canvas-confetti";
-import { useGame } from "@/client/useGame";
+import { useGame, useTick } from "@/client/useGame";
+import { readingTimeMs } from "@/engine/reducer";
 import { sound } from "@/client/sound";
 import { useWakeLock } from "@/client/useWakeLock";
 import type { GameView } from "@/engine/views";
@@ -28,8 +29,19 @@ export default function DisplayClient({ code }: { code: string }) {
   useWakeLock();
   const viewRef = useRef<GameView | null>(null);
 
+  const [reactions, setReactions] = useState<{ key: number; emoji: string; x: number; name: string }[]>([]);
+  const reactionKey = useRef(0);
+
   const onFx = (fx: FxEvent) => {
     const v = viewRef.current;
+    if (fx.cue === "react") {
+      if (!fx.id || v?.settings.reactions === false) return;
+      const key = ++reactionKey.current;
+      const name = v?.players.find((p) => p.id === fx.playerId)?.name ?? "";
+      setReactions((list) => [...list.slice(-40), { key, emoji: fx.id!, x: 4 + Math.random() * 88, name }]);
+      setTimeout(() => setReactions((list) => list.filter((r) => r.key !== key)), 3600);
+      return;
+    }
     const idx = fx.playerId ? (v?.players.find((p) => p.id === fx.playerId)?.index ?? 0) : undefined;
     if (fx.cue === "sfx" && fx.id) sound().play(fx.id);
     else sound().play(fx.cue, idx);
@@ -76,6 +88,16 @@ export default function DisplayClient({ code }: { code: string }) {
       {view.screen === "scores" && <ScoresOverlay view={view} />}
       {view.announcement && <Announcement key={view.announcement.at} text={view.announcement.text} />}
       {view.showJoinQr && view.phase !== "lobby" && <CornerQr code={view.code} />}
+      {view.screen === "none" && (
+        <div className="pointer-events-none fixed inset-0 z-20 overflow-hidden" aria-hidden>
+          {reactions.map((r) => (
+            <div key={r.key} className="anim-react absolute bottom-0 flex flex-col items-center" style={{ left: `${r.x}%` }}>
+              <span className="text-[7vmin] leading-none drop-shadow-lg">{r.emoji}</span>
+              {r.name && <span className="mt-[0.4vmin] rounded-full bg-black/45 px-[1vmin] text-[1.5vmin] text-white/85">{r.name}</span>}
+            </div>
+          ))}
+        </div>
+      )}
       {view.paused && view.screen === "none" && <PausedOverlay />}
       {view.screen === "brb" && <BrbScreen title={view.title} />}
       {view.screen === "blank" && <div className="fixed inset-0 z-40 bg-black" />}
@@ -210,6 +232,7 @@ function ClueScreen({ view, now }: { view: GameView; now: () => number }) {
   const answering = view.players.find((p) => p.id === c.answering);
   return (
     <div key={c.id} className="board-cell anim-clue relative flex h-full flex-col items-center justify-center gap-[3vmin] p-[5vmin] text-center">
+      {!c.dailyDouble && !c.allPlay && <BuzzLights clue={c} now={now} />}
       <div className="absolute left-[3vmin] top-[2vmin] cat-text text-[2.6vmin] text-white/70">
         {c.category} · <span className="text-gold">${c.dailyDouble?.wager ?? c.value}</span>
       </div>
@@ -222,7 +245,8 @@ function ClueScreen({ view, now }: { view: GameView; now: () => number }) {
         <>
           {c.dailyDouble && <div className="cat-text text-[3vmin] text-gold">Daily Double · {contestantName(view, c.dailyDouble.contestantId)} wagered ${c.dailyDouble.wager}</div>}
           {c.media && <MediaView media={c.media} autoPlay className="max-h-[42vh] max-w-[85vw] rounded-[1vmin]" />}
-          <div className="clue-text max-w-[90vw]" style={{ fontSize: `${clueSize(c.text ?? "", !!c.media)}vmin` }}>{c.text}</div>
+          <div className="clue-text max-w-[90vw]" style={{ fontSize: `${clueSize(c.text ?? "", !!c.media) * (c.allPlay?.stage === "judging" ? 0.6 : 1)}vmin` }}>{c.text}</div>
+          {c.allPlay && <AllPlayPanel view={view} />}
           {c.stage === "revealed" && (
             <div className="anim-pop mt-[1vmin] rounded-[1.5vmin] bg-black/35 px-[4vmin] py-[2vmin]">
               {c.answerMedia && <MediaView media={c.answerMedia} autoPlay className="mx-auto mb-[1.5vmin] max-h-[30vh] rounded-[1vmin]" />}
@@ -233,10 +257,98 @@ function ClueScreen({ view, now }: { view: GameView; now: () => number }) {
         </>
       )}
       <div className="absolute inset-x-[10vmin] bottom-[3vmin] flex flex-col items-center gap-[1.2vmin]">
-        {c.stage === "open" && <div className="rounded-full bg-green-600/90 px-[2.5vmin] py-[0.6vmin] text-[2.4vmin] font-bold">BUZZERS OPEN</div>}
+        {c.stage === "open" && !c.allPlay && <div className="rounded-full bg-green-600/90 px-[2.5vmin] py-[0.6vmin] text-[2.4vmin] font-bold">BUZZERS OPEN</div>}
         {answering && <div className="cat-text text-[3.2vmin] text-gold">{answering.name}</div>}
         {view.timer && <TimerBar startedAt={view.timer.startedAt} endsAt={view.timer.endsAt} now={now} className="h-[1.2vmin] w-full" />}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Light bars down both edges of the clue, like the lights around a studio board:
+ * they fill while the clue is being read (when buzzers open automatically),
+ * turn solid green the instant buzzers open, and gold while someone answers.
+ */
+function BuzzLights({ clue, now }: { clue: NonNullable<GameView["clue"]>; now: () => number }) {
+  const counting = clue.stage === "reading" && !!clue.autoUnlockAt;
+  useTick(80, counting);
+  const SEGMENTS = 9;
+  let lit = 0;
+  let tone = "bg-white/10";
+  if (clue.stage === "open") {
+    lit = SEGMENTS;
+    tone = "bg-green-400 shadow-[0_0_2.5vmin_0.6vmin_rgba(74,222,128,0.85)]";
+  } else if (clue.stage === "answering") {
+    lit = SEGMENTS;
+    tone = "bg-[var(--gold)] shadow-[0_0_2vmin_0.4vmin_rgba(255,207,63,0.7)]";
+  } else if (counting) {
+    const total = readingTimeMs(clue.text ?? "");
+    const frac = 1 - Math.min(1, Math.max(0, (clue.autoUnlockAt! - now()) / total));
+    lit = Math.floor(frac * SEGMENTS);
+    tone = "bg-white/80 shadow-[0_0_1.2vmin_0.2vmin_rgba(255,255,255,0.5)]";
+  }
+  if (clue.stage === "revealed") return null;
+  const bar = (side: string) => (
+    <div className={`absolute inset-y-[2vmin] ${side} flex w-[1.6vmin] flex-col-reverse gap-[0.8vmin]`} aria-hidden>
+      {Array.from({ length: SEGMENTS }, (_, i) => (
+        <div key={i} className={`flex-1 rounded-full transition-colors duration-100 ${i < lit ? tone : "bg-white/10"}`} />
+      ))}
+    </div>
+  );
+  return (
+    <>
+      {bar("left-[1.2vmin]")}
+      {bar("right-[1.2vmin]")}
+    </>
+  );
+}
+
+/** All-play clue: who has answered while writing, then each answer as the host rules on it. */
+function AllPlayPanel({ view }: { view: GameView }) {
+  const c = view.clue!;
+  const ap = c.allPlay!;
+  const list = contestants(view);
+  if (ap.stage === "writing" && c.stage !== "revealed") {
+    return (
+      <div>
+        <div className="cat-text text-[3.4vmin] text-gold">Everybody plays! Write your answer on your phone</div>
+        <SubmittedRow view={view} flags={Object.fromEntries(list.map((x) => [x.id, !!ap.hasAnswer[x.id]]))} label="answered" />
+      </div>
+    );
+  }
+  const answered = list.filter((x) => ap.hasAnswer[x.id]);
+  if (!answered.length) return <div className="text-[3vmin] text-white/70">Nobody wrote an answer</div>;
+  const w = answered.length <= 3 ? 26 : answered.length <= 6 ? 20 : 15;
+  return (
+    <div className="flex max-w-[94vw] flex-wrap justify-center gap-[1.6vmin]">
+      {answered.map((x) => {
+        const judged = ap.judged[x.id];
+        const shown = !!ap.answers[x.id] || ap.typed[x.id] !== undefined;
+        return (
+          <div key={x.id} className="relative flex flex-col items-center" style={{ width: `${w}vmin` }}>
+            <div
+              className={`aspect-[16/9] w-full rounded-[1vmin] bg-[var(--board-deep)] p-[0.6vmin] shadow-xl ring-[0.4vmin] ${
+                judged === true ? "ring-green-400" : judged === false ? "ring-red-500/80" : "ring-white/15"
+              }`}
+            >
+              {!shown ? (
+                <div className="grid h-full place-items-center text-[4vmin] text-white/40">?</div>
+              ) : ap.answers[x.id] ? (
+                <Ink drawing={ap.answers[x.id]} className="h-full w-full" />
+              ) : (
+                <div className="clue-text grid h-full place-items-center px-[0.5vmin] text-[2.2vmin] leading-tight">{ap.typed[x.id] || "(blank)"}</div>
+              )}
+            </div>
+            {judged !== undefined && (
+              <div className={`anim-pop absolute right-[-1vmin] top-[-1vmin] grid h-[4.5vmin] w-[4.5vmin] place-items-center rounded-full text-[2.8vmin] font-black ${judged ? "bg-green-500" : "bg-red-500"}`}>
+                {judged ? "✓" : "✗"}
+              </div>
+            )}
+            <div className="mt-[0.5vmin] max-w-full truncate text-[2vmin]" style={{ color: x.color }}>{x.name}{judged === true && <span className="money ml-[0.8vmin]">+{c.value}</span>}</div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -409,6 +521,18 @@ function WinnerScreen({ view }: { view: GameView }) {
           </div>
         ))}
       </div>
+      {!!view.awards?.length && (
+        <div className="flex max-w-[96vw] flex-wrap justify-center gap-[1.6vmin]">
+          {view.awards.map((a, i) => (
+            <div key={a.id} className="anim-pop flex w-[30vmin] flex-col items-center rounded-[1.4vmin] bg-black/30 px-[1.5vmin] py-[1.4vmin] text-center ring-1 ring-white/15" style={{ animationDelay: `${1.2 + i * 0.5}s` }}>
+              <div className="text-[5vmin] leading-none">{a.emoji}</div>
+              <div className="cat-text mt-[0.6vmin] text-[2.2vmin] text-gold">{a.title}</div>
+              <div className="text-[2.6vmin] font-bold">{a.name}</div>
+              <div className="text-[1.6vmin] text-white/65">{a.detail}</div>
+            </div>
+          ))}
+        </div>
+      )}
       <div className="mt-[2vmin] flex flex-wrap justify-center gap-[2vmin]">
         {ranked.slice(winners.length).map((c, i) => (
           <div key={c.id} className="rounded-[1vmin] bg-white/10 px-[2vmin] py-[1vmin] text-[2.6vmin]">
