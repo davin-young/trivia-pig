@@ -120,7 +120,7 @@ and live games. Details: [`deploy/homelab/README.md`](deploy/homelab/README.md#r
 
 ## Quick start (Docker)
 ```bash
-docker compose up --build        # app + Postgres + MinIO at http://localhost:3000
+docker compose up --build        # app + Postgres at http://localhost:3000
 ```
 `SEED_DEMO=true` creates **demo@example.com / demo1234** with the "Kava & Kratom" board.
 

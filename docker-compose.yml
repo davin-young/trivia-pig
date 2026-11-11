@@ -1,5 +1,7 @@
 # One-command local run:  docker compose up --build
-# Dev with hot reload:    docker compose up -d db minio && npm run dev
+# Dev with hot reload:    docker compose up -d db && npm run dev
+# Images are stored in a Docker volume. For S3-style storage instead, start MinIO with
+# `docker compose --profile minio up -d` and set STORAGE_DRIVER=s3 plus the S3_* values on the app.
 services:
   app:
     build: .
@@ -10,7 +12,8 @@ services:
       APP_URL: ${APP_URL:-http://localhost:3000}
       AUTH_SECRET: ${AUTH_SECRET:-dev-insecure-secret-change-me}
       DATABASE_URL: postgresql://jeppidy:jeppidy@db:5432/jeppidy?schema=public
-      STORAGE_DRIVER: s3
+      STORAGE_DRIVER: ${STORAGE_DRIVER:-local}
+      UPLOAD_DIR: /data/uploads
       S3_ENDPOINT: http://minio:9000
       S3_REGION: us-east-1
       S3_BUCKET: jeppidy
@@ -19,11 +22,11 @@ services:
       S3_FORCE_PATH_STYLE: "true"
       ALLOW_SIGNUP: "true"
       SEED_DEMO: "true"
+    volumes:
+      - uploads:/data/uploads
     depends_on:
       db:
         condition: service_healthy
-      minio-init:
-        condition: service_completed_successfully
 
   db:
     image: postgres:17-alpine
@@ -42,8 +45,10 @@ services:
       timeout: 3s
       retries: 20
 
+  # Optional (profile "minio"). MinIO no longer publishes images on Docker Hub; these come from quay.io.
   minio:
-    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    profiles: [minio]
+    image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: minioadmin
@@ -60,7 +65,8 @@ services:
       retries: 20
 
   minio-init:
-    image: minio/mc:RELEASE.2025-04-16T18-13-26Z
+    profiles: [minio]
+    image: quay.io/minio/mc:RELEASE.2025-04-16T18-13-26Z
     depends_on:
       minio:
         condition: service_healthy
@@ -70,4 +76,5 @@ services:
 
 volumes:
   pgdata:
+  uploads:
   miniodata:
