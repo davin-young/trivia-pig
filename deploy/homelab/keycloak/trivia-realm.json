@@ -15,6 +15,8 @@
     "realm": [
       { "name": "trivia-admin", "description": "Super-admin in Trivia Pig (manage users and media)" },
       { "name": "trivia-host", "description": "May sign in to build boards and host games" },
+      { "name": "offline_access", "description": "${role_offline-access}" },
+      { "name": "uma_authorization", "description": "${role_uma_authorization}" },
       {
         "name": "default-roles-trivia",
         "description": "Granted to every new user",
