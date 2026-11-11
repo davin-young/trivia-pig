@@ -7,7 +7,7 @@ import { readingTimeMs } from "@/engine/reducer";
 import { sound } from "@/client/sound";
 import { useWakeLock } from "@/client/useWakeLock";
 import type { GameView } from "@/engine/views";
-import type { FxEvent } from "@/shared/protocol";
+import { TEAM_COLORS, type FxEvent, type PresenceView } from "@/shared/protocol";
 import { Ink } from "@/components/Ink";
 import {
   APP_NAME,
@@ -47,7 +47,7 @@ export default function DisplayClient({ code }: { code: string }) {
     else sound().play(fx.cue, idx);
   };
 
-  const { view, status, error, now } = useGame({
+  const { view, presence, status, error, now } = useGame({
     role: "display",
     code,
     onFx,
@@ -70,6 +70,14 @@ export default function DisplayClient({ code }: { code: string }) {
     }
   }, [left, timerEnd, view?.timer?.label]);
 
+  // Upbeat original loop while the room fills; it stops the moment the game starts.
+  const inLobby = view?.phase === "lobby";
+  useEffect(() => {
+    if (!soundOn || !inLobby) return;
+    sound().startLobbyMusic();
+    return () => sound().stopMusic();
+  }, [soundOn, inLobby]);
+
   if (!view) {
     return (
       <Shell>
@@ -84,7 +92,7 @@ export default function DisplayClient({ code }: { code: string }) {
   return (
     <Shell>
       <ConnBanner status={status} error={error} />
-      <Stage view={view} now={now} />
+      <Stage view={view} now={now} presence={presence} />
       {view.screen === "scores" && <ScoresOverlay view={view} />}
       {view.announcement && <Announcement key={view.announcement.at} text={view.announcement.text} />}
       {view.showJoinQr && view.phase !== "lobby" && <CornerQr code={view.code} />}
@@ -118,10 +126,10 @@ function Shell({ children }: { children: React.ReactNode }) {
   return <main className="relative h-dvh w-screen select-none overflow-hidden bg-[var(--board-edge)] text-white">{children}</main>;
 }
 
-function Stage({ view, now }: { view: GameView; now: () => number }) {
+function Stage({ view, now, presence }: { view: GameView; now: () => number; presence: PresenceView | null }) {
   switch (view.phase) {
     case "lobby":
-      return <Lobby view={view} />;
+      return <Lobby view={view} presence={presence} />;
     case "board":
       return (
         <WithPodiums view={view}>
@@ -143,49 +151,132 @@ function Stage({ view, now }: { view: GameView; now: () => number }) {
 
 // ------------------------------------------------------------------- lobby
 
-function Lobby({ view }: { view: GameView }) {
+/** Deterministic little tilt per card so the wall of names looks hand-pinned, not gridded. */
+const TILTS = [-2.2, 1.6, -1.1, 2.4, -1.8, 0.9, 2, -2.6, 1.2, -0.7];
+
+/**
+ * The room screen everyone sees while people join: where to go, the room code,
+ * and a wall of name cards that pop in as each person finishes drawing theirs.
+ */
+function Lobby({ view, presence }: { view: GameView; presence: PresenceView | null }) {
   const origin = useOrigin();
   const joinUrl = `${origin}/join?code=${view.code}`;
+  const host = origin.replace(/^https?:\/\//, "");
   const list = view.players.filter((p) => !p.removed);
+  const n = list.length;
+  // Open seats so the room looks like it is waiting for you.
+  const open = view.lobbyLocked ? 0 : n === 0 ? 3 : 1;
+  const wall = useRef<HTMLDivElement>(null);
+  const fit = useCardFit(wall, n + open);
+  const teamOf = (id: string | null) => view.teams.find((t) => t.id === id);
+
   return (
-    <div className="flex h-full flex-col bg-gradient-to-b from-[var(--board-deep)] to-[var(--board-edge)] p-[3vmin]">
-      <header className="flex items-start justify-between gap-[3vmin]">
-        <div>
-          <div className="cat-text text-[3vmin] text-white/60">{APP_NAME}</div>
-          <h1 className="cat-text text-[6vmin] text-white">{view.title}</h1>
+    <div className="lobby-bg flex h-full flex-col gap-[2vmin] p-[3vmin]">
+      <header className="flex items-center gap-[3vmin]">
+        <div className="min-w-0 flex-1">
+          <div className="cat-text text-[2.6vmin] text-white/60">🐷 {APP_NAME}</div>
+          <h1 className="cat-text truncate text-[5.5vmin] leading-tight text-white">{view.title}</h1>
         </div>
-        {view.lobbyLocked && <div className="rounded-full bg-red-600 px-[2vmin] py-[0.8vmin] text-[2.2vmin] font-bold">LOBBY LOCKED</div>}
-      </header>
-      <div className="mt-[2vmin] flex flex-1 gap-[4vmin] overflow-hidden">
-        <div className="flex w-[38%] shrink-0 flex-col items-center justify-center gap-[2vmin] rounded-[2vmin] bg-white/5 p-[3vmin]">
-          <div className="text-[2.6vmin] text-white/70">Join on your phone at</div>
-          <div className="cat-text text-[4vmin] text-gold">{origin.replace(/^https?:\/\//, "")}/join</div>
-          <div className="text-[2.6vmin] text-white/70">with code</div>
-          <div className="money rounded-[1.5vmin] bg-black/40 px-[3vmin] py-[1vmin] text-[13vmin] leading-none tracking-[0.15em] text-white">{view.code}</div>
-          {origin && <Qr value={joinUrl} className="w-[24vmin] rounded-[1vmin] bg-white p-[0.6vmin] [&>svg]:h-auto [&>svg]:w-full" />}
-        </div>
-        <div className="flex flex-1 flex-col overflow-hidden">
-          <div className="mb-[2vmin] text-[3vmin] text-white/70">
-            {list.length ? `${list.length} player${list.length === 1 ? "" : "s"} signed in` : "Waiting for players…"}
+        <div className="flex shrink-0 items-center gap-[2.5vmin] rounded-[2vmin] bg-black/35 p-[1.6vmin] pl-[2.6vmin] shadow-xl ring-1 ring-white/10">
+          <div className="flex flex-col gap-[0.6vmin]">
+            <div className="text-[2.2vmin] text-white/70">
+              On your phone, go to <span className="cat-text text-[2.8vmin] text-gold">{host}/join</span>
+            </div>
+            <div className="flex items-center gap-[1.6vmin]">
+              <span className="text-[2vmin] font-semibold uppercase tracking-[0.25em] text-white/60">Room code</span>
+              <div className="flex gap-[0.8vmin]" aria-label={`Room code ${view.code}`}>
+                {view.code.split("").map((ch, i) => (
+                  <span key={i} className="money grid h-[10vmin] w-[7.6vmin] place-items-center rounded-[1.2vmin] bg-white text-[8vmin] leading-none text-[var(--board-edge)] shadow-lg">
+                    {ch}
+                  </span>
+                ))}
+              </div>
+            </div>
           </div>
-          <div className="grid flex-1 auto-rows-min grid-cols-3 gap-[2vmin] overflow-hidden">
-            {list.map((p) => (
-              <div key={p.id} className="anim-pop flex flex-col items-center rounded-[1.5vmin] bg-[var(--board)] p-[1.2vmin] shadow-lg">
-                <div className="aspect-[5/2] w-full rounded-[1vmin] bg-[var(--board-deep)] p-[0.5vmin] text-[3vmin]">
+          {origin && <Qr value={joinUrl} className="w-[15vmin] shrink-0 rounded-[1vmin] bg-white p-[0.6vmin] [&>svg]:h-auto [&>svg]:w-full" />}
+        </div>
+      </header>
+
+      <div ref={wall} className="grid min-h-0 flex-1 place-content-center overflow-hidden" style={{ gridTemplateColumns: `repeat(${fit.cols}, ${fit.w}px)`, gap: fit.gap, fontSize: fit.w * 0.075 }}>
+        {list.map((p) => {
+          const color = (view.settings.mode === "team" && teamOf(p.teamId)?.color) || TEAM_COLORS[p.index % TEAM_COLORS.length];
+          const away = !p.bot && presence?.players[p.id] !== undefined && presence.players[p.id] !== "online";
+          return (
+            <div key={p.id} className="anim-pop">
+              <div
+                className={`anim-bob relative flex flex-col rounded-[0.7em] bg-[var(--board)] p-[0.4em] transition-opacity ${away ? "opacity-45" : ""}`}
+                style={{ rotate: `${TILTS[p.index % TILTS.length]}deg`, animationDelay: `${(p.index % 7) * -0.45}s`, boxShadow: `0 0 0 0.2em ${color}, 0 0.5em 1.2em rgba(0,0,0,.45)` }}
+              >
+                <div className="aspect-[5/2] w-full rounded-[0.45em] bg-[var(--board-deep)] p-[0.2em] text-[1.5em]">
                   <Signature player={p} className="h-full w-full" />
                 </div>
-                {view.settings.mode === "team" && (
-                  <div className="mt-[0.6vmin] text-[1.8vmin] font-semibold" style={{ color: view.teams.find((t) => t.id === p.teamId)?.color }}>
-                    {view.teams.find((t) => t.id === p.teamId)?.name ?? "No team yet"}
-                  </div>
-                )}
+                <div className="mt-[0.3em] flex h-[1.4em] items-center justify-center gap-[0.4em] text-[0.85em] font-semibold leading-none">
+                  <span className="h-[0.6em] w-[0.6em] shrink-0 rounded-full" style={{ background: color }} />
+                  <span className="truncate">{p.name}</span>
+                  {p.bot && <span className="rounded bg-white/15 px-[0.3em] text-[0.8em] font-normal text-white/70">bot</span>}
+                  {view.settings.mode === "team" && <span className="truncate font-normal text-white/60">· {teamOf(p.teamId)?.name ?? "no team yet"}</span>}
+                  {away && <span className="font-normal text-white/60">· away</span>}
+                </div>
               </div>
-            ))}
+            </div>
+          );
+        })}
+        {Array.from({ length: open }, (_, i) => (
+          <div key={`open${i}`} className="flex flex-col rounded-[0.7em] border-[0.15em] border-dashed border-white/15 p-[0.4em]">
+            <div className="grid aspect-[5/2] w-full place-items-center text-[0.9em] text-white/30">{i === 0 ? "Your name here" : ""}</div>
+            <div className="mt-[0.3em] h-[1.19em]" />
           </div>
-        </div>
+        ))}
       </div>
+
+      <footer className="flex items-center justify-between gap-[3vmin] text-[2.6vmin]">
+        <div className="text-white/80">
+          <span className="money text-[3.6vmin] text-gold">{n}</span> {n === 1 ? "player is" : "players are"} in
+        </div>
+        {view.lobbyLocked ? (
+          <div className="rounded-full bg-red-600 px-[2vmin] py-[0.6vmin] text-[2.2vmin] font-bold">ROOM LOCKED · starting soon</div>
+        ) : (
+          <div className="animate-pulse text-white/70">{n === 0 ? "Waiting for the first player…" : "Draw your name to join. The host starts when everybody is in."}</div>
+        )}
+      </footer>
     </div>
   );
+}
+
+/** Width / height of one name card, including its label (kept a little generous so tilted cards never clip). */
+const CARD_RATIO = 1.62;
+
+/**
+ * Pick the column count and card width that make `count` cards as large as
+ * possible inside the element, so 3 players and 300 players both fill the wall.
+ */
+function useCardFit(ref: React.RefObject<HTMLDivElement | null>, count: number) {
+  const [fit, setFit] = useState({ cols: 3, w: 200, gap: 16 });
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const measure = () => {
+      const W = el.clientWidth;
+      const H = el.clientHeight;
+      if (!W || !H) return;
+      const total = Math.max(1, count);
+      let best = { cols: 1, w: 0, gap: 8 };
+      for (let cols = 1; cols <= total; cols++) {
+        const rows = Math.ceil(total / cols);
+        // The gap scales with the card, so solve for the width that fits both ways (gap = 9% of width).
+        const byW = W / (cols + (cols + 1) * 0.09);
+        const byH = (H / (rows + (rows + 1) * 0.09 * CARD_RATIO)) * CARD_RATIO;
+        const w = Math.min(byW, byH, Math.min(W, H) * 0.62);
+        if (w > best.w) best = { cols, w, gap: w * 0.09 };
+      }
+      setFit((f) => (f.cols === best.cols && Math.abs(f.w - best.w) < 0.5 ? f : { cols: best.cols, w: Math.floor(best.w), gap: Math.floor(best.gap) }));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [ref, count]);
+  return fit;
 }
 
 // -------------------------------------------------------------------- board
@@ -371,11 +462,33 @@ function WithPodiums({ view, children }: { view: GameView; children: React.React
   );
 }
 
-function PodiumRow({ view, list }: { view: GameView; list: Contestant[] }) {
+/** More podiums than this do not fit legibly across a TV. */
+const MAX_PODIUMS = 10;
+
+function PodiumRow({ view, list: everyone }: { view: GameView; list: Contestant[] }) {
   const answeringPlayer = view.clue?.answering ?? null;
   const ddId = view.clue?.dailyDouble?.contestantId ?? null;
+  let list = everyone;
+  if (everyone.length > MAX_PODIUMS) {
+    // Big room: the leaders, plus whoever is in the spotlight right now.
+    const ranked = [...everyone].sort((a, b) => (view.scores[b.id] ?? 0) - (view.scores[a.id] ?? 0));
+    const spot = everyone.filter((c) => c.id === ddId || c.id === view.controlId || (!!answeringPlayer && c.players.some((p) => p.id === answeringPlayer)));
+    const picked = new Set(spot.map((c) => c.id));
+    for (const c of ranked) {
+      if (picked.size >= MAX_PODIUMS - 1) break;
+      picked.add(c.id);
+    }
+    list = ranked.filter((c) => picked.has(c.id));
+  }
+  const hidden = everyone.length - list.length;
   return (
     <div className="flex h-[19vh] shrink-0 items-stretch justify-center gap-[1.2vmin] bg-gradient-to-b from-[#3a2a0a] to-[#1a1204] px-[1vmin] py-[1vmin]">
+      {hidden > 0 && (
+        <div className="order-last flex shrink-0 flex-col items-center justify-center px-[1.5vmin] text-center text-white/70">
+          <div className="money text-[3.4vmin] text-gold">+{hidden}</div>
+          <div className="text-[1.7vmin]">more playing</div>
+        </div>
+      )}
       {list.map((c) => {
         const buzzed = !!answeringPlayer && c.players.some((p) => p.id === answeringPlayer);
         const score = view.scores[c.id] ?? 0;

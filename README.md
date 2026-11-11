@@ -6,6 +6,9 @@ hand, multi-color, and write their Final Jeopardy answers the same way.
 
 Built to replace jeopardylabs.com, with a better board editor, real admin controls, and instant phone join.
 
+**Open source.** The code lives at <https://github.com/davin-young/trivia-pig>, and you can host your
+own copy (see [Quick start](#quick-start-docker)). A public instance runs at <https://triviapig.lol>.
+
 > _Screenshots / GIFs:_
 > `docs/screenshots/display-board.png` · `docs/screenshots/host-ipad.png` · `docs/screenshots/player-buzzer.png` · `docs/screenshots/final-reveal.gif`
 
@@ -17,6 +20,10 @@ Built to replace jeopardylabs.com, with a better board editor, real admin contro
     keyboard shortcuts on a laptop.
   - `/join` → `/play/CODE`: phone buzzer with lockout feedback, handwritten name, Final Jeopardy
     wager and answer.
+- **Join screen.** Before the game, the display is a party-game style room screen: where to go, a
+  big room code and QR, original lobby music, and a wall of hand-drawn name cards that pop in as
+  people join. Cards resize to fit, so 3 players or 300 both fill the screen. There is no cap on
+  players or teams unless the host sets one.
 - **Device pairing.** Hand the host controls to an iPad or phone by scanning a QR code. You can
   hand off as host, co-host, or scorekeeper. Online/reconnecting/offline status shows for every
   device.

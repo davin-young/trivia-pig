@@ -303,6 +303,62 @@ class SoundEngine {
     this.musicStop = () => clearTimeout(timer);
   }
 
+  /**
+   * Original waiting-room groove that loops until stopMusic(): a bouncy
+   * C–Am–F–G vamp at 112 BPM with off-beat stabs, a walking bass and light
+   * percussion. Not based on any existing theme.
+   */
+  startLobbyMusic() {
+    if (!this.ctx) return;
+    this.stopMusic();
+    const ctx = this.ctx;
+    const n = (s: number) => 440 * Math.pow(2, (s - 9) / 12);
+    const beat = 60 / 112;
+    const BARS = 8;
+    const prog = [
+      { root: 0, tones: [4, 7, 12] }, // C
+      { root: -3, tones: [4, 9, 12] }, // Am
+      { root: -7, tones: [5, 9, 12] }, // F
+      { root: -5, tones: [2, 7, 11] }, // G
+    ];
+    const riff = [12, 16, 19, 16, 21, 19, 16, 14, 12, 14, 16, 12, 14, 11, 7, 11];
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let stopped = false;
+    const schedule = (t0: number) => {
+      if (stopped) return;
+      this.musicNodes = this.musicNodes.slice(-400); // old notes have already ended
+      for (let bar = 0; bar < BARS; bar++) {
+        const chord = prog[bar % 4];
+        const bt = t0 + bar * beat * 4;
+        for (let i = 0; i < 4; i++) {
+          const at = bt + i * beat;
+          // kick on every beat, hat on every off-beat, clap on 2 and 4
+          this.tone(110, at, 0.13, { type: "sine", gain: 0.2, glideTo: 45, bus: "music" });
+          this.noise(at + beat / 2, 0.03, { filter: "highpass", freq: 7000, gain: 0.05, bus: "music" });
+          if (i % 2 === 1) this.noise(at, 0.08, { filter: "bandpass", freq: 1800, gain: 0.07, bus: "music" });
+          // off-beat chord stab
+          chord.tones.forEach((s) => this.tone(n(s), at + beat / 2, beat * 0.28, { type: "square", gain: 0.022, bus: "music" }));
+        }
+        // bass: root, root, fifth, walk-up
+        [0, 0, 7, 10].forEach((step, i) => this.tone(n(chord.root - 12 + step), bt + i * beat, beat * 0.7, { type: "triangle", gain: 0.13, bus: "music" }));
+        // lead riff in the second half of the phrase
+        if (bar >= 4) {
+          for (let i = 0; i < 4; i++) {
+            const s = riff[((bar - 4) * 4 + i) % riff.length];
+            this.tone(n(s), bt + i * beat, beat * 0.55, { type: "triangle", gain: 0.06, bus: "music", attack: 0.01 });
+          }
+        }
+      }
+      const next = t0 + BARS * beat * 4;
+      timer = setTimeout(() => schedule(next), Math.max(0, (next - ctx.currentTime - 1.5) * 1000));
+    };
+    schedule(ctx.currentTime + 0.1);
+    this.musicStop = () => {
+      stopped = true;
+      if (timer) clearTimeout(timer);
+    };
+  }
+
   stopMusic() {
     if (!this.ctx) return;
     const now = this.ctx.currentTime;

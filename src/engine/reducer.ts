@@ -181,7 +181,7 @@ function reduce(s: GameState, entry: LogEntry, fx: Cue[]): boolean {
       if (s.bannedNames.includes(normName(a.name))) return false;
       if (s.lobbyLocked) return false;
       if (s.phase !== "lobby" && !s.settings.allowLateJoin) return false;
-      if (activePlayers(s).length >= s.settings.maxPlayers) return false;
+      if (s.settings.maxPlayers > 0 && activePlayers(s).length >= s.settings.maxPlayers) return false;
       const teamId = a.teamId && s.teams.some((t) => t.id === a.teamId) ? a.teamId : null;
       s.players[a.playerId] = {
         id: a.playerId,
@@ -334,7 +334,7 @@ function reduce(s: GameState, entry: LogEntry, fx: Cue[]): boolean {
     }
     case "team/create": {
       if (s.teams.some((t) => t.id === a.teamId)) return false;
-      if (s.teams.length >= s.settings.maxTeams) return false;
+      if (s.settings.maxTeams > 0 && s.teams.length >= s.settings.maxTeams) return false;
       s.teams.push({ id: a.teamId, name: a.name, color: a.color });
       if (s.scores[a.teamId] === undefined) s.scores[a.teamId] = 0;
       return true;

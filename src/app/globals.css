@@ -118,6 +118,29 @@ button:disabled {
     transform: none;
   }
 }
+@keyframes bob {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+  50% {
+    translate: 0 -0.9vmin;
+  }
+}
+.anim-bob {
+  animation: bob 3.2s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .anim-bob {
+    animation: none;
+  }
+}
+.lobby-bg {
+  background:
+    radial-gradient(60vmax 40vmax at 12% 0%, color-mix(in srgb, var(--board) 85%, white 6%), transparent 70%),
+    radial-gradient(50vmax 40vmax at 100% 100%, color-mix(in srgb, var(--board) 70%, transparent), transparent 70%),
+    linear-gradient(to bottom, var(--board-deep), var(--board-edge));
+}
 .anim-pop {
   animation: pop-in 0.5s ease-out both;
 }

@@ -4,8 +4,10 @@ import type { Drawing } from "@/shared/strokes";
 
 export const settingsSchema = z.object({
   mode: z.enum(["solo", "team"]).default("solo"),
-  maxPlayers: z.number().int().min(1).max(50).default(12),
-  maxTeams: z.number().int().min(2).max(10).default(4),
+  /** 0 means no limit (the default). */
+  maxPlayers: z.number().int().min(0).max(100000).default(0),
+  /** 0 means no limit (the default). */
+  maxTeams: z.number().int().min(0).max(100000).default(0),
   allowLateJoin: z.boolean().default(true),
   /** Seconds a buzzed-in player has to answer (0 = no timer). */
   answerTimerSec: z.number().int().min(0).max(120).default(8),

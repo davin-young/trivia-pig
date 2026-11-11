@@ -108,7 +108,7 @@ function TeamTools() {
     <div className="flex flex-col gap-2">
       <form className="flex gap-2" onSubmit={async (e) => { e.preventDefault(); if (name.trim() && (await act({ type: "team/create", name: name.trim() }))) setName(""); }}>
         <input className="input" placeholder={`Team ${view.teams.length + 1} name`} value={name} onChange={(e) => setName(e.target.value)} maxLength={40} />
-        <button className="btn-primary" disabled={view.teams.length >= view.settings.maxTeams}>Add team</button>
+        <button className="btn-primary" disabled={view.settings.maxTeams > 0 && view.teams.length >= view.settings.maxTeams}>Add team</button>
       </form>
       <button className="btn-ghost" disabled={!view.teams.length} onClick={() => act({ type: "team/autoBalance" })}>⚖️ Auto-balance teams</button>
     </div>
@@ -247,8 +247,8 @@ export function SettingsPanel() {
         </div>
         {!lobby && <span className="text-xs text-white/40">Mode can only change in the lobby.</span>}
       </Field>
-      <NumField label="Max players" value={s.maxPlayers} min={1} max={50} onSave={(v) => set({ maxPlayers: v })} />
-      {s.mode === "team" && <NumField label="Max teams" value={s.maxTeams} min={2} max={10} onSave={(v) => set({ maxTeams: v })} />}
+      <NumField label="Max players (0 = no limit)" value={s.maxPlayers} min={0} max={100000} onSave={(v) => set({ maxPlayers: v })} />
+      {s.mode === "team" && <NumField label="Max teams (0 = no limit)" value={s.maxTeams} min={0} max={100000} onSave={(v) => set({ maxTeams: v })} />}
       <Toggle label="Allow late joins after the game starts" checked={s.allowLateJoin} onChange={(v) => set({ allowLateJoin: v })} />
       <h3 className="mt-2 font-semibold">Buzzers</h3>
       <NumField label="Answer timer (seconds, 0 = off)" value={s.answerTimerSec} min={0} max={120} onSave={(v) => set({ answerTimerSec: v })} />
