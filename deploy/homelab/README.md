@@ -7,7 +7,7 @@ pass through the tunnel by default.
 
 ```
 phones / TV / iPad ──HTTPS──► Cloudflare ──tunnel──► cloudflared ─► app:3000 (Next.js + Socket.IO)
-                                                                   ├─► db (Postgres) ─► backup (nightly pg_dump)
+                                                                   ├─► db (Postgres) ─► backup (nightly, verified, rotated)
                                                                    └─► ./data/uploads (images)
 auth.triviapig.lol ─────────► Cloudflare ──tunnel──► keycloak:8080 (optional bundled Keycloak)
 ```
@@ -89,18 +89,48 @@ dashboard.
   and scan the QR code. Nothing to type.
 - **Players:** scan the QR code on the TV, or go to `triviapig.lol/join` and type the code.
 
+## Recovery: what happens when things go wrong
+The stack is built to come back by itself. You should not need to touch it.
+
+| Event | What happens |
+|---|---|
+| App crashes or is OOM-killed | Docker restarts it. Phones, the TV and the host reconnect on their own within a few seconds, and the game continues from the last saved step (every action is saved within about 0.3 s). |
+| App hangs | A watchdog inside the app exits after 45 s of a frozen event loop, and Docker restarts it. |
+| Host reboot / power cut | All services start again on boot (`restart: unless-stopped`; make sure Docker itself starts on boot: `sudo systemctl enable docker`). The app waits for Postgres and retries migrations, so start order doesn't matter. |
+| Postgres restarts or is briefly unreachable | Games keep running from memory. Saves retry with backoff until the database is back, and nothing is evicted from memory while unsaved. |
+| Internet or tunnel drops | `cloudflared` reconnects by itself. Devices show "reconnecting" and resume when it returns. |
+| A deploy goes wrong | `scripts/update.sh` waits for the new container to report healthy and prints its logs if it doesn't. |
+| Bad data or a mistake | Restore last night's backup with `scripts/restore.sh` (it saves the current database first). |
+
+This was tested by hard-killing the server in the middle of a clue (`npx tsx scripts/crash-test.ts`):
+score, seats, the open clue, and the host's undo history all came back.
+
+**Health endpoints**
+- `/healthz`: liveness (used by the Docker health check).
+- `/readyz`: JSON with database status, version, uptime, live games, connected devices, and
+  unsaved games. Point Uptime Kuma (or similar) at `https://triviapig.lol/readyz`.
+
+`docker compose ps` shows the health of each service. The `backup` service turns *unhealthy* if
+the newest good backup is more than 26 hours old.
+
 ## Operations
+Run these from `deploy/homelab`.
+
 | Task | Command |
 |---|---|
-| Update | `git pull && docker compose up -d --build` (migrations run on start) |
-| Logs | `docker compose logs -f app` |
-| Backups | nightly in `./data/backups/` (daily/weekly/monthly rotation) |
-| Restore | `gunzip -c data/backups/last/trivia-latest.sql.gz \| docker compose exec -T db psql -U trivia trivia` |
+| Update | `./scripts/update.sh` (pulls, rebuilds, restarts, waits for healthy; skips if a game is in progress unless `FORCE=1`) |
+| Update nightly | add to cron: `30 5 * * * /path/to/deploy/homelab/scripts/update.sh >> /var/log/triviapig-update.log 2>&1` |
+| Status | `docker compose ps` and `curl -s localhost:3000/readyz` from inside: `docker compose exec app node -e "fetch('http://127.0.0.1:3000/readyz').then(r=>r.text()).then(console.log)"` |
+| Logs | `docker compose logs -f app` (rotated: 5 files of 10 MB per service) |
+| Backups | `./data/backups/daily` (14 days) and `monthly` (6 months): database dump plus an archive of uploaded images, verified after writing |
+| Back up now | `docker compose restart backup` runs one if the last is older than 20 h; or `docker compose exec backup sh -c 'rm /backups/.last-success'` then restart |
+| Restore | `./scripts/restore.sh` (newest) or `./scripts/restore.sh data/backups/daily/<file>.sql.gz [uploads-<file>.tar.gz]` |
 | Manual dump | `docker compose exec db pg_dump -U trivia trivia > dump.sql` |
 | Use MinIO for images | `STORAGE_DRIVER=s3`, set `S3_SECRET_ACCESS_KEY`, `docker compose --profile minio up -d` |
-| Without Cloudflare | `docker compose --profile caddy up -d` (forward 80/443; see `Caddyfile`) and stop `cloudflared` |
+| Without Cloudflare | `docker compose --profile caddy up -d --scale cloudflared=0` (forward 80/443; see `Caddyfile`) |
 
-Everything persistent lives in `./data/`. Back up that folder and `.env`.
+Everything persistent lives in `./data/`. For off-site safety, copy `./data/backups` and `.env`
+somewhere else (another machine, a NAS, or cloud storage) with whatever tool you already use.
 
 ### Behind your own reverse proxy instead (nginx / Traefik / NPM)
 The only requirement is WebSocket upgrade on `/socket.io/`, plus long timeouts:

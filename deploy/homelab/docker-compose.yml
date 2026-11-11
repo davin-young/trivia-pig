@@ -1,17 +1,38 @@
 # Trivia Pig on a homelab, published at https://triviapig.lol through a Cloudflare Tunnel.
 #
 #   cp .env.example .env    # fill in secrets
-#   docker compose up -d                          # app + db + tunnel
+#   docker compose up -d --build                  # app + db + backups + tunnel
 #   docker compose --profile keycloak up -d       # ...plus a bundled Keycloak at auth.triviapig.lol
 #   docker compose --profile caddy up -d          # alternative to the tunnel: Caddy with Let's Encrypt (ports 80/443)
+#
+# Built to recover on its own:
+#   - every service restarts after a crash or a host reboot (restart: unless-stopped)
+#   - the app waits for Postgres and retries migrations, so start order never matters
+#   - games are written to Postgres on every action; after a restart, phones, the TV and the
+#     host reconnect by themselves and the game continues where it stopped
+#   - a watchdog inside the app exits if it ever hangs, so Docker restarts it
+#   - nightly verified backups of the database and uploaded images in ./data/backups
 #
 # Nothing here publishes a port to your LAN except the optional Caddy profile;
 # cloudflared makes an outbound connection to Cloudflare, so no port forwarding is needed.
 
 name: triviapig
 
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+x-defaults: &defaults
+  restart: unless-stopped
+  logging: *logging
+  security_opt:
+    - no-new-privileges:true
+
 services:
   app:
+    <<: *defaults
     image: ${APP_IMAGE:-triviapig:local}
     # "build" builds from this repo. To pull a published image instead, set
     # APP_IMAGE=ghcr.io/<you>/jeppidy:latest and APP_PULL_POLICY=always in .env.
@@ -20,10 +41,11 @@ services:
       context: ../..
       args:
         NEXT_PUBLIC_APP_NAME: ${APP_NAME:-Trivia Pig}
-    restart: unless-stopped
+        APP_VERSION: ${APP_VERSION:-homelab}
     env_file: .env
     environment:
-      DATABASE_URL: postgresql://trivia:${POSTGRES_PASSWORD}@db:5432/trivia?schema=public
+      DATABASE_URL: postgresql://trivia:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/trivia?schema=public&connection_limit=10
+      AUTH_SECRET: ${AUTH_SECRET:?Set AUTH_SECRET in .env}
       PORT: "3000"
       TRUST_PROXY: "true"
       STORAGE_DRIVER: ${STORAGE_DRIVER:-local}
@@ -33,17 +55,28 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    # The image has its own HEALTHCHECK on /healthz; these values just make it explicit.
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 4s
+      retries: 3
+      start_period: 120s
+      start_interval: 3s
+    # Time to save every running game before Docker force-kills the container.
+    stop_grace_period: 30s
+    mem_limit: ${APP_MEM_LIMIT:-1g}
     # Uncomment to reach the app directly on your LAN (e.g. http://homelab:3000) while setting up:
     # ports:
     #   - "3000:3000"
     networks: [internal, edge]
 
   db:
+    <<: *defaults
     image: postgres:17-alpine
-    restart: unless-stopped
     environment:
       POSTGRES_USER: trivia
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: trivia
     volumes:
       - ./data/postgres:/var/lib/postgresql/data
@@ -52,23 +85,38 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
+      start_period: 20s
+    # Let Postgres finish a clean shutdown (avoids crash recovery on the next boot).
+    stop_grace_period: 60s
+    shm_size: 128mb
     networks: [internal]
 
-  # Nightly pg_dump into ./data/backups (keeps 7 daily, 4 weekly, 6 monthly).
+  # Nightly pg_dump + uploads archive into ./data/backups, verified and rotated.
+  # See scripts/backup.sh. Restore with scripts/restore.sh.
   backup:
-    image: prodrigestivill/postgres-backup-local:17
-    restart: unless-stopped
+    <<: *defaults
+    image: postgres:17-alpine
+    entrypoint: ["/bin/sh", "/scripts/backup.sh"]
     environment:
-      POSTGRES_HOST: db
-      POSTGRES_DB: trivia
-      POSTGRES_USER: trivia
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      SCHEDULE: "@daily"
-      BACKUP_KEEP_DAYS: 7
-      BACKUP_KEEP_WEEKS: 4
-      BACKUP_KEEP_MONTHS: 6
+      PGHOST: db
+      PGDATABASE: trivia
+      PGUSER: trivia
+      PGPASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      BACKUP_HOUR: ${BACKUP_HOUR:-4}
+      BACKUP_KEEP_DAILY: ${BACKUP_KEEP_DAILY:-14}
+      BACKUP_KEEP_MONTHLY: ${BACKUP_KEEP_MONTHLY:-6}
+      TZ: ${TZ:-UTC}
     volumes:
+      - ./scripts:/scripts:ro
       - ./data/backups:/backups
+      - ./data/uploads:/uploads:ro
+    healthcheck:
+      # Unhealthy if the newest successful backup is older than 26 hours.
+      test: ["CMD-SHELL", "test -f /backups/.last-success && test $$(( $$(date +%s) - $$(cat /backups/.last-success) )) -lt 93600"]
+      interval: 1h
+      timeout: 5s
+      retries: 1
+      start_period: 10m
     depends_on:
       db:
         condition: service_healthy
@@ -79,21 +127,22 @@ services:
   #   triviapig.lol        → http://app:3000
   #   auth.triviapig.lol   → http://keycloak:8080   (only if you use the keycloak profile)
   cloudflared:
+    <<: *defaults
     image: cloudflare/cloudflared:2025.4.2
-    restart: unless-stopped
     command: tunnel --no-autoupdate run
     environment:
       TUNNEL_TOKEN: ${TUNNEL_TOKEN}
     depends_on:
-      - app
+      app:
+        condition: service_healthy
     networks: [edge]
 
   # ---------------------------------------------------------------- optional
 
   keycloak:
+    <<: *defaults
     profiles: [keycloak]
     image: quay.io/keycloak/keycloak:26.2
-    restart: unless-stopped
     command: start --import-realm
     environment:
       KC_DB: postgres
@@ -114,12 +163,13 @@ services:
     depends_on:
       keycloak-db:
         condition: service_healthy
+    mem_limit: ${KEYCLOAK_MEM_LIMIT:-1536m}
     networks: [internal, edge]
 
   keycloak-db:
+    <<: *defaults
     profiles: [keycloak]
     image: postgres:17-alpine
-    restart: unless-stopped
     environment:
       POSTGRES_USER: keycloak
       POSTGRES_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
@@ -131,28 +181,39 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
+      start_period: 20s
+    stop_grace_period: 60s
     networks: [internal]
 
   # S3-compatible media storage, if you prefer it over the local ./data/uploads folder.
   # Set STORAGE_DRIVER=s3 and the S3_* values in .env (see .env.example).
   minio:
+    <<: *defaults
     profiles: [minio]
     image: minio/minio:RELEASE.2025-04-22T22-12-26Z
-    restart: unless-stopped
     command: server /data
     environment:
       MINIO_ROOT_USER: ${S3_ACCESS_KEY_ID:-trivia}
       MINIO_ROOT_PASSWORD: ${S3_SECRET_ACCESS_KEY:-change-me-please}
     volumes:
       - ./data/minio:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
     networks: [internal]
 
   minio-init:
     profiles: [minio]
     image: minio/mc:RELEASE.2025-04-16T18-13-26Z
-    depends_on: [minio]
+    restart: on-failure
+    logging: *logging
+    depends_on:
+      minio:
+        condition: service_healthy
     entrypoint: >
-      /bin/sh -c "sleep 3 && mc alias set local http://minio:9000 $${MINIO_USER} $${MINIO_PASS} &&
+      /bin/sh -c "mc alias set local http://minio:9000 $${MINIO_USER} $${MINIO_PASS} &&
       mc mb --ignore-existing local/$${BUCKET}"
     environment:
       MINIO_USER: ${S3_ACCESS_KEY_ID:-trivia}
@@ -161,17 +222,20 @@ services:
     networks: [internal]
 
   # Alternative to Cloudflare Tunnel: Caddy terminates TLS itself (forward ports 80+443 to this box).
+  # Start with:  docker compose --profile caddy up -d --scale cloudflared=0
   caddy:
+    <<: *defaults
     profiles: [caddy]
     image: caddy:2.10-alpine
-    restart: unless-stopped
     ports:
       - "80:80"
       - "443:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ./data/caddy:/data
-    depends_on: [app]
+    depends_on:
+      app:
+        condition: service_healthy
     networks: [edge]
 
 networks:

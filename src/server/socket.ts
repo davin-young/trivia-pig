@@ -67,7 +67,13 @@ export function attachSocketServer(io: Server, deps: SocketAuthDeps = prismaSock
     const socket = raw as unknown as GameSocket;
     // Register listeners synchronously so messages sent immediately after
     // connecting aren't dropped while the game loads from the database.
-    const gameP = manager.load(socket.data.gameId).then((game) => {
+    const gameP = manager
+      .load(socket.data.gameId)
+      .catch((err) => {
+        console.error(`[socket] could not load game ${socket.data.code}`, err);
+        return null;
+      })
+      .then((game) => {
       if (!game) {
         raw.emit("error", { message: "Game not found" });
         raw.disconnect(true);

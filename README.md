@@ -68,6 +68,12 @@ Built to replace jeopardylabs.com, with a better board editor, real admin contro
 
 See [`docs/PLAN.md`](docs/PLAN.md) for the data model and the full socket event schema.
 
+**Built to recover.** Every action is saved to Postgres within about 0.3 s. If the process
+crashes, hangs (a watchdog exits it), or the box reboots, the supervisor restarts it, devices
+reconnect by themselves, and the game continues. If Postgres is briefly down, games keep running
+from memory and saves retry. `/healthz` is liveness; `/readyz` reports database status, version,
+and live games. Details: [`deploy/homelab/README.md`](deploy/homelab/README.md#recovery-what-happens-when-things-go-wrong).
+
 > **Scaling note:** live game state is held in one process, so run **one** app instance. A single
 > small instance handles many concurrent games.
 
@@ -92,6 +98,7 @@ Useful scripts:
 | `npm test` | unit tests (engine, pairing, socket auth, limits, OIDC, import, results) |
 | `npm run lint` / `npm run typecheck` | ESLint / tsc |
 | `npx tsx scripts/smoke.ts` | end-to-end test against a running server (2 players, a clue, undo, Final) |
+| `npx tsx scripts/crash-test.ts` | hard-kills the built server mid-game, restarts it, and checks every device resumes |
 | `npx tsx scripts/dev-bots.ts` | creates a game and joins 3 bot players, for UI work |
 
 To test on phones on your LAN, set `APP_URL=http://<your-lan-ip>:3000`.

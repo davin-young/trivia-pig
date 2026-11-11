@@ -1,6 +1,10 @@
 /**
  * Single long-lived process: Next.js (pages + API routes) and Socket.IO on one port.
  * Run with `npm run dev` (tsx watch) or `npm start` after `npm run build`.
+ *
+ * Built to be supervised (Docker `restart: unless-stopped`): every game action is
+ * written through to Postgres, so whenever this process dies and comes back,
+ * clients reconnect on their own and the game resumes from the saved log.
  */
 import { createServer } from "node:http";
 import next from "next";
@@ -9,27 +13,53 @@ import { attachSocketServer } from "@/server/socket";
 import { getManager } from "@/server/live";
 import { env } from "@/server/env";
 import { prisma } from "@/server/db";
+import { dbReady, startJanitor, startWatchdog, waitForDb, withTimeout } from "@/server/ops";
 
 const dev = process.env.NODE_ENV !== "production";
 const port = env.port;
 const hostname = process.env.HOST ?? "0.0.0.0";
+const version = process.env.APP_VERSION || "dev";
+const startedAt = Date.now();
+let shuttingDown = false;
 
 async function main() {
   // Validate secrets early so a misconfigured prod container fails fast.
   void env.secret;
+
+  if (!(await waitForDb(dev ? 3 : 30))) {
+    throw new Error("Database is not reachable (check DATABASE_URL and that Postgres is up)");
+  }
 
   const app = next({ dev, hostname, port });
   const handle = app.getRequestHandler();
   await app.prepare();
 
   const httpServer = createServer((req, res) => {
-    if (req.url === "/healthz") {
-      res.writeHead(200, { "content-type": "text/plain" });
-      res.end("ok");
+    const path = req.url?.split("?")[0];
+    // Liveness: the process is up and serving. Used by the Docker HEALTHCHECK.
+    if (path === "/healthz") {
+      res.writeHead(shuttingDown ? 503 : 200, { "content-type": "text/plain", "cache-control": "no-store" });
+      res.end(shuttingDown ? "shutting down" : "ok");
       return;
     }
-    void handle(req, res);
+    // Readiness + status: also checks the database. For uptime monitors.
+    if (path === "/readyz") {
+      void dbReady().then((db) => {
+        const ok = db && !shuttingDown;
+        res.writeHead(ok ? 200 : 503, { "content-type": "application/json", "cache-control": "no-store" });
+        res.end(JSON.stringify({ ok, db, version, uptimeSec: Math.round((Date.now() - startedAt) / 1000), ...getManager().stats() }));
+      });
+      return;
+    }
+    handle(req, res).catch((err) => {
+      console.error("[http]", req.method, req.url, err);
+      if (!res.headersSent) res.writeHead(500);
+      res.end();
+    });
   });
+  // Cloudflare / reverse proxies reuse idle connections; outlive their keep-alive.
+  httpServer.keepAliveTimeout = 75_000;
+  httpServer.headersTimeout = 80_000;
 
   const io = new Server(httpServer, {
     path: "/socket.io",
@@ -42,19 +72,50 @@ async function main() {
   });
   attachSocketServer(io);
 
+  httpServer.on("error", (err) => {
+    console.error("[http] server error", err);
+    process.exit(1);
+  });
   httpServer.listen(port, hostname, () => {
-    console.log(`> Jeppidy ready on http://${hostname === "0.0.0.0" ? "localhost" : hostname}:${port} (${dev ? "dev" : "production"})`);
+    console.log(`> Jeppidy ${version} ready on http://${hostname === "0.0.0.0" ? "localhost" : hostname}:${port} (${dev ? "dev" : "production"})`);
   });
 
-  const shutdown = async (signal: string) => {
-    console.log(`\n${signal} received, saving games...`);
+  startJanitor();
+  const stopWatchdog = dev ? () => {} : startWatchdog();
+
+  const shutdown = async (reason: string, code: number) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`\n${reason}: saving games and shutting down...`);
+    // Never hang forever: Docker sends SIGKILL after its grace period anyway.
+    const force = setTimeout(() => {
+      console.error("Shutdown timed out; exiting.");
+      process.exit(code || 1);
+    }, 12_000);
+    force.unref();
+    stopWatchdog();
+    // Disconnects every client (they auto-reconnect to the next process) and stops new connections.
     io.close();
-    await getManager().flushAll().catch(console.error);
-    await prisma.$disconnect().catch(() => {});
-    process.exit(0);
+    const saved = await withTimeout(
+      getManager()
+        .flushAll()
+        .then(() => true),
+      8000,
+      false,
+    );
+    if (!saved) console.error("Some games could not be saved before exit (they keep their last saved step).");
+    await withTimeout(prisma.$disconnect(), 2000, undefined);
+    process.exit(code);
   };
-  process.on("SIGINT", () => void shutdown("SIGINT"));
-  process.on("SIGTERM", () => void shutdown("SIGTERM"));
+  process.on("SIGINT", () => void shutdown("SIGINT received", 0));
+  process.on("SIGTERM", () => void shutdown("SIGTERM received", 0));
+  // A bug in one request must not take down game night: log and carry on.
+  process.on("unhandledRejection", (err) => console.error("[unhandledRejection]", err));
+  // The process is in an unknown state: save what we have and let the supervisor restart us.
+  process.on("uncaughtException", (err) => {
+    console.error("[uncaughtException]", err);
+    void shutdown("Uncaught exception", 1);
+  });
 }
 
 main().catch((err) => {

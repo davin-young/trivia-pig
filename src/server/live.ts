@@ -42,6 +42,7 @@ export class LiveGame {
   private saving: Promise<void> = Promise.resolve();
   private timers = new Map<string, NodeJS.Timeout>();
   dirty = false;
+  private saveFailures = 0;
   private pendingBuzzes: PendingBuzz<(ok: boolean) => void>[] = [];
   private buzzTimer: NodeJS.Timeout | null = null;
 
@@ -126,6 +127,21 @@ export class LiveGame {
       });
     }
     if (action.type === "final/startTimer") this.scheduleFinalClose();
+  }
+
+  /**
+   * Re-arm server-driven timers after the process restarted mid-game (the
+   * timers lived in memory; the state they act on came back from the log).
+   */
+  restoreAutomation() {
+    this.scheduleFinalClose();
+    const c = this.state.clue;
+    if (c?.nobody) {
+      const clueId = c.id;
+      this.later("nobody", NOBODY_RETURN_MS, () => {
+        if (this.state.clue?.id === clueId && this.state.clue?.nobody) this.dispatch({ type: "clue/close" }, "system");
+      });
+    }
   }
 
   scheduleFinalClose() {
@@ -323,13 +339,18 @@ export class LiveGame {
 
   // ------------------------------------------------------------- persistence
 
-  scheduleSave() {
+  scheduleSave(delayMs = 300) {
     this.dirty = true;
     if (this.saveTimer) return;
     this.saveTimer = setTimeout(() => {
       this.saveTimer = null;
       void this.flush();
-    }, 300);
+    }, delayMs);
+  }
+
+  /** True while the latest state has not reached the database. */
+  get unsaved() {
+    return this.dirty || this.saveFailures > 0;
   }
 
   flush(): Promise<void> {
@@ -349,15 +370,26 @@ export class LiveGame {
     } as const;
     this.saving = this.saving
       .then(() => prisma.game.update({ where: { id: this.id }, data }))
-      .then(() => undefined)
+      .then(() => {
+        if (this.saveFailures) console.log(`[game ${this.code}] save recovered after ${this.saveFailures} failed attempt(s)`);
+        this.saveFailures = 0;
+      })
       .catch((err) => {
-        console.error(`[game ${this.code}] save failed`, err);
+        // Database hiccup: keep the game running from memory and keep retrying
+        // (1s, 2s, 4s ... capped at 15s) until the write lands.
+        this.saveFailures++;
+        console.error(`[game ${this.code}] save failed (attempt ${this.saveFailures})`, err instanceof Error ? err.message : err);
         this.dirty = true;
+        if (!this.disposed) this.scheduleSave(Math.min(15_000, 1000 * 2 ** Math.min(this.saveFailures - 1, 4)));
       });
     return this.saving;
   }
 
+  private disposed = false;
+
   dispose() {
+    this.disposed = true;
+    if (this.saveTimer) clearTimeout(this.saveTimer);
     if (this.buzzTimer) clearTimeout(this.buzzTimer);
     for (const t of this.timers.values()) clearTimeout(t);
     this.timers.clear();
@@ -396,7 +428,7 @@ export class GameManager {
       const log = (row.actions as unknown as LogEntry[]) ?? [];
       const live = new LiveGame(row.id, row.code, row.ownerId, row.boardId, row.boardTitle, new GameHistory(setup, log), this);
       this.games.set(row.id, live);
-      live.scheduleFinalClose();
+      live.restoreAutomation();
       return live;
     })().finally(() => this.loading.delete(gameId));
     this.loading.set(gameId, p);
@@ -413,6 +445,8 @@ export class GameManager {
           this.evictTimers.delete(game.id);
           if (game.sockets.size > 0) return;
           await game.flush();
+          // Never drop the only copy of a game the database hasn't accepted yet.
+          if (game.unsaved) return this.scheduleEvict(game);
           game.dispose();
           this.games.delete(game.id);
         },
@@ -429,6 +463,15 @@ export class GameManager {
 
   async flushAll() {
     await Promise.all([...this.games.values()].map((g) => g.flush()));
+  }
+
+  stats() {
+    const games = [...this.games.values()];
+    return {
+      games: games.length,
+      sockets: games.reduce((n, g) => n + g.sockets.size, 0),
+      unsaved: games.filter((g) => g.unsaved).length,
+    };
   }
 }
 
