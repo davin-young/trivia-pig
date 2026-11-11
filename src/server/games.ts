@@ -41,6 +41,7 @@ export async function createGame(opts: {
       setup: setup as unknown as Prisma.InputJsonValue,
       actions: log as unknown as Prisma.InputJsonValue,
       state: summarize(state) as unknown as Prisma.InputJsonValue,
+      rematchOfId: opts.rematchOfId ?? null,
     },
   });
 }
