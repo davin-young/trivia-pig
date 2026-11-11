@@ -24,6 +24,22 @@ own copy (see [Quick start](#quick-start-docker)). A public instance runs at <ht
   big room code and QR, original lobby music, and a wall of hand-drawn name cards that pop in as
   people join. Cards resize to fit, so 3 players or 300 both fill the screen. There is no cap on
   players or teams unless the host sets one.
+- **Party-game touches.**
+  - *Everybody's in:* the first player to join gets a crown and can start the game from their
+    phone, so a casual night needs no host device.
+  - *Start countdown:* a "starting in 5…" countdown on the display; people can still join.
+  - *Audience:* extra people join to watch, send reactions and cheer for a player. The most-cheered
+    player wins a Crowd Favorite award. The audience can join even when the room is locked.
+  - *Doodle avatars:* an optional small drawing next to the name, shown on the join screen,
+    podiums and winner screen.
+  - *Winner gallery and shareable results:* the end screen shows everyone's card with awards and a
+    QR code to a public, read-only results page (`/r/<game id>`).
+  - *Play again:* the host picks the next board on the end screen and the whole room moves over.
+  - *Family friendly:* one switch makes the host approve every drawing before it reaches the display.
+  - *Take your seat back:* a player whose phone died picks their name on the join screen. Only
+    seats with no connected phone can be taken.
+  - *Accessibility:* 1.5× or 2× timers, and captions on the display for sound cues.
+  - *Streamer mode:* keeps the room code and QR off the display.
 - **Device pairing.** Hand the host controls to an iPad or phone by scanning a QR code. You can
   hand off as host, co-host, or scorekeeper. Online/reconnecting/offline status shows for every
   device.

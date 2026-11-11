@@ -91,7 +91,7 @@ async function main() {
     const created = await fetch(`${BASE}/api/games`, {
       method: "POST",
       headers: { "content-type": "application/json", cookie },
-      body: JSON.stringify({ boardId: board.id, settings: { earlyBuzzLockoutMs: 0 } }),
+      body: JSON.stringify({ boardId: board.id, settings: { earlyBuzzLockoutMs: 0, startCountdownSec: 0 } }),
     });
     const game = await created.json();
     assert(created.ok, `game ${game.code} created`);

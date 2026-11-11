@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { BoardCellView } from "@/engine/views";
 import { Ink } from "@/components/Ink";
-import { MediaView, Signature, TimerBar, contestantName, contestants, formatScore, playerName } from "@/components/game";
+import { MediaView, Signature, TimerBar, contestantName, contestants, formatScore, playerName, useCountdown } from "@/components/game";
 import { useTick } from "@/client/useGame";
 import { useHost } from "./HostClient";
 
@@ -55,8 +55,10 @@ function useShortcuts() {
 // ------------------------------------------------------------------- lobby
 
 function LobbyControl() {
-  const { view, act, presence } = useHost();
+  const { view, act, presence, now } = useHost();
+  const left = useCountdown(view.startingAt, now);
   const players = view.players.filter((p) => !p.removed);
+  const pending = players.filter((p) => p.signatureHidden && (p.signature || p.avatar));
   const teamMode = view.settings.mode === "team";
   const unassigned = teamMode ? players.filter((p) => !p.teamId) : [];
   return (
@@ -65,6 +67,9 @@ function LobbyControl() {
         <div>
           <div className="text-sm text-white/60">Join code</div>
           <div className="money text-5xl tracking-[0.2em]">{view.code}</div>
+          <button className="mt-1 text-xs text-white/60 underline" onClick={() => act({ type: "settings/update", settings: { hideCode: !view.settings.hideCode } })}>
+            {view.settings.hideCode ? "🤫 Hidden on the big screen — show it" : "Hide the code on the big screen (streaming)"}
+          </button>
         </div>
         <div className="text-sm text-white/70">
           Players go to <b>/join</b> on their phones, or scan the QR on the display.
@@ -77,7 +82,10 @@ function LobbyControl() {
 
       <div className="card">
         <div className="mb-3 flex items-center justify-between">
-          <h3 className="font-semibold">{players.length} player{players.length === 1 ? "" : "s"} in the lobby</h3>
+          <h3 className="font-semibold">
+            {players.length} player{players.length === 1 ? "" : "s"} in the lobby
+            {view.crowd.count > 0 && <span className="font-normal text-white/60"> · {view.crowd.count} in the audience</span>}
+          </h3>
           <button
             className={`btn-ghost !py-1.5 text-sm ${view.lobbyLocked ? "!bg-red-600" : ""}`}
             onClick={() => act({ type: "lobby/lock", locked: !view.lobbyLocked })}
@@ -85,13 +93,34 @@ function LobbyControl() {
             {view.lobbyLocked ? "🔒 Locked — unlock" : "🔓 Lock lobby"}
           </button>
         </div>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+        {pending.length > 0 && (
+          <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-yellow-400/50 bg-yellow-400/10 p-2 text-sm">
+            <span className="min-w-0 flex-1">
+              <b>{pending.length} drawing{pending.length === 1 ? "" : "s"} waiting for your OK</b> before {pending.length === 1 ? "it shows" : "they show"} on the big screen.
+            </span>
+            <button className="btn-primary !py-1.5" onClick={() => pending.forEach((p) => void act({ type: "player/hideSignature", playerId: p.id, hidden: false }))}>
+              Approve all
+            </button>
+          </div>
+        )}
+        <div className="grid max-h-[50dvh] grid-cols-2 gap-2 overflow-y-auto p-1 sm:grid-cols-3">
           {players.map((p) => (
-            <div key={p.id} className="rounded-lg bg-panel-2 p-2">
-              <div className="aspect-[5/2] rounded bg-[var(--board-deep)] text-lg">
+            <div key={p.id} className={`rounded-lg bg-panel-2 p-2 ${p.signatureHidden && (p.signature || p.avatar) ? "ring-2 ring-yellow-400/70" : ""}`}>
+              <div className="relative aspect-[5/2] rounded bg-[var(--board-deep)] text-lg">
                 <Signature player={p} className="h-full w-full" />
+                {p.avatar && (
+                  <div className="absolute -right-1 -top-1 h-9 w-9 rounded-full bg-[var(--board-deep)] ring-1 ring-white/30">
+                    <Ink drawing={p.avatar} className="h-full w-full" />
+                  </div>
+                )}
               </div>
-              <div className="mt-1 truncate text-xs text-white/60">{p.bot && "🤖 "}{p.name}{teamMode && ` · ${contestantName(view, p.teamId) === "—" ? "no team" : contestantName(view, p.teamId)}`}</div>
+              {p.signatureHidden && (p.signature || p.avatar) && (
+                <div className="mt-1 flex gap-1 text-xs">
+                  <button className="flex-1 rounded bg-green-600 px-2 py-1 font-semibold" onClick={() => act({ type: "player/hideSignature", playerId: p.id, hidden: false })}>Approve</button>
+                  <button className="flex-1 rounded bg-white/10 px-2 py-1" onClick={() => act({ type: "player/resetSignature", playerId: p.id })}>Erase</button>
+                </div>
+              )}
+              <div className="mt-1 truncate text-xs text-white/60">{view.vipId === p.id && "👑 "}{p.bot && "🤖 "}{p.name}{teamMode && ` · ${contestantName(view, p.teamId) === "—" ? "no team" : contestantName(view, p.teamId)}`}</div>
             </div>
           ))}
         </div>
@@ -108,16 +137,30 @@ function LobbyControl() {
         )}
       </div>
 
-      <button
-        className="btn-primary py-4 text-xl"
-        disabled={teamMode && view.teams.length === 0}
-        onClick={() => {
-          if (unassigned.length && !confirm(`${unassigned.length} player(s) aren't on a team and won't score. Start anyway?`)) return;
-          void act({ type: "game/start" });
-        }}
-      >
-        ▶ Start game
-      </button>
+      {left !== null ? (
+        <div className="card flex flex-wrap items-center gap-3 !border-gold/60">
+          <div className="money text-5xl">{Math.max(1, Math.ceil(left / 1000))}</div>
+          <div className="min-w-0 flex-1 text-sm text-white/70">Starting… the big screen is counting down. People can still join.</div>
+          <button className="btn-ghost" onClick={() => act({ type: "game/cancelStart" })}>Cancel</button>
+          <button className="btn-primary" onClick={() => act({ type: "game/start", now: true })}>Start now</button>
+        </div>
+      ) : (
+        <button
+          className="btn-primary py-4 text-xl"
+          disabled={teamMode && view.teams.length === 0}
+          onClick={() => {
+            if (unassigned.length && !confirm(`${unassigned.length} player(s) aren't on a team and won't score. Start anyway?`)) return;
+            void act({ type: "game/start" });
+          }}
+        >
+          ▶ Start game
+        </button>
+      )}
+      {view.vipId && left === null && (
+        <p className="text-center text-xs text-white/50">
+          👑 {players.find((p) => p.id === view.vipId)?.name} was first in and can also start the game from their phone (turn this off in Settings).
+        </p>
+      )}
       <p className="text-center text-xs text-white/40">Tip: on a laptop, Space opens/locks buzzers, C/X judge, R reveals, N = nobody, B = back to board, S = scoreboard, U = undo.</p>
     </div>
   );
@@ -604,6 +647,26 @@ function FinalEditor({ onDone }: { onDone: () => void }) {
 function FinishedControl() {
   const { view, gameId, act, toast } = useHost();
   const [busy, setBusy] = useState(false);
+  const [boards, setBoards] = useState<{ id: string; title: string }[] | null>(null);
+  const [boardId, setBoardId] = useState("");
+  useEffect(() => {
+    let live = true;
+    fetch("/api/boards")
+      .then((r) => (r.ok ? r.json() : { boards: [] }))
+      .then((d: { boards?: { id: string; title: string }[] }) => live && setBoards(d.boards ?? []))
+      .catch(() => live && setBoards([]));
+    return () => {
+      live = false;
+    };
+  }, []);
+  async function rematchWith(id: string) {
+    setBusy(true);
+    const res = await fetch(`/api/games/${gameId}/rematch`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ boardId: id }) });
+    setBusy(false);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return toast(data.error ?? "Couldn't start the next game");
+    window.location.href = `/host/${data.code}`;
+  }
   const ranked = [...contestants(view)].sort((a, b) => (view.scores[b.id] ?? 0) - (view.scores[a.id] ?? 0));
   async function rematch(sameBoard: boolean) {
     setBusy(true);
@@ -637,9 +700,39 @@ function FinishedControl() {
           ))}
         </div>
       )}
-      <button className="btn-primary py-3" disabled={busy} onClick={() => rematch(true)}>🔁 Rematch — same players, same board</button>
-      <Link className="btn-ghost py-3" href={`/dashboard?rematch=${gameId}`}>🔁 Rematch with a different board…</Link>
+      <div className="card flex flex-col gap-2 !border-gold/50">
+        <h3 className="font-semibold">▶ Play again with the same players</h3>
+        <p className="text-sm text-white/60">Everyone stays in the room: phones and the big screen move to the new game by themselves, with fresh scores.</p>
+        {boards && boards.length > 0 ? (
+          <div className="flex flex-wrap gap-2">
+            <select className="input min-w-0 flex-1" value={boardId} onChange={(e) => setBoardId(e.target.value)} aria-label="Board for the next game">
+              <option value="">Pick the next board…</option>
+              {boards.map((b) => (
+                <option key={b.id} value={b.id}>{b.title}</option>
+              ))}
+            </select>
+            <button className="btn-primary" disabled={busy || !boardId} onClick={() => rematchWith(boardId)}>Start</button>
+          </div>
+        ) : (
+          <Link className="btn-ghost py-2" href={`/dashboard?rematch=${gameId}`}>Pick a board on the dashboard…</Link>
+        )}
+        <button className="btn-ghost py-2" disabled={busy} onClick={() => rematch(true)}>🔁 Same board again</button>
+      </div>
       <Link className="btn-ghost py-3" href={`/results/${gameId}`}>📊 Results & CSV export</Link>
+      <button
+        className="btn-ghost py-3"
+        onClick={async () => {
+          const url = `${window.location.origin}/r/${gameId}`;
+          try {
+            await navigator.clipboard.writeText(url);
+            toast("Results link copied. Anyone with it can see the final standings.");
+          } catch {
+            toast(url);
+          }
+        }}
+      >
+        🔗 Copy a shareable results link
+      </button>
       <button className="btn-ghost" onClick={() => act({ type: "board/resetUsed" })}>Reset used clues</button>
       <p className="text-center text-xs text-white/40">Ended by mistake? Use History → undo “Ended game”.</p>
     </div>

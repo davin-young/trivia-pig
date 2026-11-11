@@ -53,7 +53,7 @@ async function main() {
     await new Promise<void>((resolve, reject) => {
       s.on("connect_error", reject);
       s.on("connect", () =>
-        s.emit("player:join", { name: NAMES[i % NAMES.length] + (i >= NAMES.length ? ` ${Math.floor(i / NAMES.length) + 1}` : ""), signature: i % 5 === 4 ? null : scribble(i + 1) }, (r: { ok: boolean; error?: string }) =>
+        s.emit("player:join", { name: NAMES[i % NAMES.length] + (i >= NAMES.length ? ` ${Math.floor(i / NAMES.length) + 1}` : ""), signature: i % 5 === 4 ? null : scribble(i + 1), avatar: i % 3 === 0 ? { ...scribble(i + 7), w: 600, h: 600 } : null }, (r: { ok: boolean; error?: string }) =>
           r.ok ? resolve() : reject(new Error(r.error)),
         ),
       );

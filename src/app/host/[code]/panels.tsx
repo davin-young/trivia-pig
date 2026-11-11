@@ -44,7 +44,7 @@ export function PlayersPanel() {
       </div>
       <div className="mt-2 flex flex-wrap gap-1 text-xs">
         <SmallBtn onClick={() => { setRenaming(p.id); setName(p.name); }}>Rename</SmallBtn>
-        <SmallBtn onClick={() => act({ type: "player/hideSignature", playerId: p.id, hidden: !p.signatureHidden })}>{p.signatureHidden ? "Show drawing" : "Hide drawing"}</SmallBtn>
+        <SmallBtn onClick={() => act({ type: "player/hideSignature", playerId: p.id, hidden: !p.signatureHidden })}>{p.signatureHidden ? (view.settings.familyMode ? "✓ Approve drawing" : "Show drawing") : "Hide drawing"}</SmallBtn>
         <SmallBtn onClick={() => confirm(`Erase ${p.name}'s drawing?`) && act({ type: "player/resetSignature", playerId: p.id })}>Reset drawing</SmallBtn>
         {teamMode && (
           <select className="rounded border border-line bg-panel px-1" value={p.teamId ?? ""} onChange={(e) => act({ type: "team/assign", playerId: p.id, teamId: e.target.value || null })}>
@@ -84,6 +84,22 @@ export function PlayersPanel() {
         <div className="flex flex-col gap-2">
           {active.map(playerRow)}
           {!active.length && <div className="text-white/50">No players yet.</div>}
+        </div>
+      )}
+      {(view.crowd.members?.length ?? 0) > 0 && (
+        <div>
+          <div className="mb-1 text-sm text-white/60">Audience ({view.crowd.members!.length}) — watching, reacting and cheering</div>
+          <div className="max-h-48 overflow-y-auto">
+            {view.crowd.members!.map((m) => (
+              <div key={m.id} className="flex items-center justify-between gap-2 py-1 text-sm">
+                <span className="flex min-w-0 items-center gap-2">
+                  <StatusDot status={presence?.players[m.id] ?? "offline"} />
+                  <span className="truncate">{m.name}</span>
+                </span>
+                <SmallBtn danger onClick={() => confirm(`Remove ${m.name} from the audience?`) && act({ type: "player/ban", playerId: m.id })}>Remove</SmallBtn>
+              </div>
+            ))}
+          </div>
         </div>
       )}
       {removed.length > 0 && (
@@ -250,6 +266,26 @@ export function SettingsPanel() {
       <NumField label="Max players (0 = no limit)" value={s.maxPlayers} min={0} max={100000} onSave={(v) => set({ maxPlayers: v })} />
       {s.mode === "team" && <NumField label="Max teams (0 = no limit)" value={s.maxTeams} min={0} max={100000} onSave={(v) => set({ maxTeams: v })} />}
       <Toggle label="Allow late joins after the game starts" checked={s.allowLateJoin} onChange={(v) => set({ allowLateJoin: v })} />
+      <h3 className="mt-2 font-semibold">Party</h3>
+      <Toggle label="First player in can start the game from their phone (👑)" checked={s.vipStart} onChange={(v) => set({ vipStart: v })} />
+      <NumField label="Start countdown on the big screen (seconds, 0 = off)" value={s.startCountdownSec} min={0} max={30} onSave={(v) => set({ startCountdownSec: v })} />
+      <Toggle label="Audience: extra people can watch, react and cheer without playing" checked={s.audience} onChange={(v) => set({ audience: v })} />
+      <Toggle label="Doodle avatars next to drawn names" checked={s.avatars} onChange={(v) => set({ avatars: v })} />
+      <Toggle label="Players who lost their phone can take their seat back by name" checked={s.reclaimSeats} onChange={(v) => set({ reclaimSeats: v })} />
+      <Toggle label="Family friendly: you approve every drawing before it shows on the big screen" checked={s.familyMode} onChange={(v) => set({ familyMode: v })} />
+      <Toggle label="Streamer mode: keep the room code and QR off the big screen" checked={s.hideCode} onChange={(v) => set({ hideCode: v })} />
+      <h3 className="mt-2 font-semibold">Accessibility</h3>
+      <Field label="Timers">
+        <div className="flex gap-2">
+          {([1, 1.5, 2] as const).map((x) => (
+            <button key={x} className={`btn-ghost flex-1 ${s.timerScale === x ? "!border-gold !text-gold" : ""}`} onClick={() => set({ timerScale: x })}>
+              {x === 1 ? "Normal" : `${x}× longer`}
+            </button>
+          ))}
+        </div>
+        <span className="text-xs text-white/40">Stretches the answer, all-play, reading and Final timers.</span>
+      </Field>
+      <Toggle label="Captions on the big screen for sound cues" checked={s.captions} onChange={(v) => set({ captions: v })} />
       <h3 className="mt-2 font-semibold">Buzzers</h3>
       <NumField label="Answer timer (seconds, 0 = off)" value={s.answerTimerSec} min={0} max={120} onSave={(v) => set({ answerTimerSec: v })} />
       <NumField label="Early-buzz lockout (ms, 0 = off)" value={s.earlyBuzzLockoutMs} min={0} max={5000} onSave={(v) => set({ earlyBuzzLockoutMs: v })} />

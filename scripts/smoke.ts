@@ -54,7 +54,7 @@ async function main() {
   const board = boards.boards.find((b: { title: string }) => b.title === "Kava & Kratom");
   assert(board, "demo board exists");
 
-  const created = await api("/api/games", { method: "POST", cookie, body: JSON.stringify({ boardId: board.id, settings: { earlyBuzzLockoutMs: 300 } }) });
+  const created = await api("/api/games", { method: "POST", cookie, body: JSON.stringify({ boardId: board.id, settings: { earlyBuzzLockoutMs: 300, startCountdownSec: 0 } }) });
   const game = await created.json();
   assert(created.ok && /^[A-Z0-9]{5}$/.test(game.code), `game created with code ${game.code}`);
 
@@ -142,7 +142,7 @@ async function main() {
   for (const c of [host, display, p1, p2]) c.s.close();
 
   // ---- second game: auto-open buzzers, practice bots, all-play clue, reactions ----
-  const created2 = await api("/api/games", { method: "POST", cookie, body: JSON.stringify({ boardId: board.id, settings: { autoUnlock: true, allPlayTimerSec: 5 } }) });
+  const created2 = await api("/api/games", { method: "POST", cookie, body: JSON.stringify({ boardId: board.id, settings: { autoUnlock: true, allPlayTimerSec: 5, startCountdownSec: 0 } }) });
   const game2 = await created2.json();
   assert(created2.ok, `second game created (${game2.code})`);
   const h2 = connect({ role: "host", code: game2.code }, cookie);
@@ -185,6 +185,69 @@ async function main() {
   assert(shown.clue!.allPlay!.typed[cara] === "my guess" && shown.scores[cara] === 200, "judged answer is shown and scored");
   assert(shown.clue!.answer === null, "correct answer still hidden until revealed");
   for (const c of [h2, d2, q1]) c.s.close();
+
+  // ---- party features: VIP start, countdown, audience, avatars, family mode, seat reclaim, public results ----
+  const created3 = await api("/api/games", { method: "POST", cookie, body: JSON.stringify({ boardId: board.id, settings: { startCountdownSec: 2, familyMode: true } }) });
+  const game3 = await created3.json();
+  assert(created3.ok && game3.id, `third game created (${game3.code})`);
+  const h3 = connect({ role: "host", code: game3.code }, cookie);
+  const d3 = connect({ role: "display", code: game3.code });
+  const pa = connect({ role: "player", code: game3.code });
+  const pb = connect({ role: "player", code: game3.code });
+  const pw = connect({ role: "player", code: game3.code });
+  await d3.until((v) => v.phase === "lobby", "third lobby");
+  const ink = { v: 1, w: 600, h: 240, strokes: [{ c: "#ffd23f", s: 10, p: [[10, 10, 0.5], [50, 60, 0.6], [90, 20, 0.5]] }] };
+  const ja = await pa.emit("player:join", { name: "Vera", signature: ink, avatar: { ...ink, w: 300, h: 300 } });
+  const jb = await pb.emit("player:join", { name: "Bram", signature: null });
+  assert(ja.ok && jb.ok, "two players join the third game");
+  const vipId = (ja.data as { playerId: string }).playerId;
+  const bramId = (jb.data as { playerId: string }).playerId;
+  let v3 = await d3.until((v) => v.players.length === 2, "display sees both players");
+  assert(v3.vipId === vipId, "first player in is the VIP");
+  assert(v3.players[0].signature === null && v3.players[0].avatar === null, "family mode keeps unapproved drawings off the display");
+  const hv3 = await h3.until((v) => v.players.length === 2, "host sees both players");
+  assert(!!hv3.players[0].signature && !!hv3.players[0].avatar && hv3.players[0].signatureHidden, "host can see the drawing and avatar awaiting approval");
+  await h3.emit("host:action", { action: { type: "player/hideSignature", playerId: vipId, hidden: false } });
+  v3 = await d3.until((v) => !!v.players[0].signature && !!v.players[0].avatar, "approved drawing and avatar reach the display");
+  assert(true, "host approval puts the drawing and avatar on the display");
+
+  const jw = await pw.emit("player:join", { name: "Wren", signature: null, audience: true });
+  assert(jw.ok, "someone joins the audience");
+  v3 = await d3.until((v) => v.crowd.count === 1, "display counts the audience");
+  assert(v3.players.length === 2, "audience members are not contestants");
+  assert((await pw.emit("player:cheer", { contestantId: bramId })).ok, "audience cheers for a player");
+  await d3.until((v) => v.crowd.cheers[bramId] === 1, "display shows the cheer");
+  assert(((await pw.emit("player:buzz", {})).data as { accepted: boolean }).accepted === false, "audience cannot buzz");
+  assert(!(await pa.emit("player:cheer", { contestantId: bramId })).ok, "players cannot cast audience cheers");
+
+  // Bram's phone dies; he takes his seat back from another device by name.
+  const stolen = connect({ role: "player", code: game3.code });
+  await stolen.until((v) => v.phase === "lobby", "new device connected");
+  assert(!(await stolen.emit("player:reclaim", { playerId: bramId })).ok, "a seat that is in use cannot be taken");
+  pb.s.close();
+  await new Promise((r) => setTimeout(r, 400));
+  const seats = (await stolen.emit("player:seats", {})).data as { seats: { id: string; name: string }[] };
+  assert(seats.seats.length === 1 && seats.seats[0].name === "Bram", "the empty seat is offered by name");
+  const back = await stolen.emit("player:reclaim", { playerId: bramId });
+  assert(back.ok && (back.data as { playerId: string }).playerId === bramId, "player reclaims their seat on a new device");
+  await stolen.until((v) => v.me?.playerId === bramId, "reclaimed seat is bound");
+  assert(((await stolen.emit("player:seats", {})).data as { seats: unknown[] }).seats.length === 0, "the seat is no longer offered");
+
+  assert(!(await stolen.emit("player:start", {})).ok, "only the VIP can start from a phone");
+  assert((await pa.emit("player:start", {})).ok, "VIP starts the game from their phone");
+  v3 = await d3.until((v) => !!v.startingAt, "countdown shows on the display");
+  assert(v3.phase === "lobby", "the room stays open during the countdown");
+  await d3.until((v) => v.phase === "board", "game starts when the countdown ends", 6000);
+  assert(true, "game starts by itself when the countdown ends");
+  assert((await api(`/r/${game3.id}`)).status === 404, "results are not public while the game is running");
+  await h3.emit("host:action", { action: { type: "game/end" } });
+  const fin3 = await d3.until((v) => v.phase === "finished", "third game finished");
+  assert(fin3.gameId === game3.id && (fin3.awards ?? []).some((a) => a.id === "crowd" && a.winnerId === bramId), "crowd favorite award goes to the most-cheered player");
+  await new Promise((r) => setTimeout(r, 900)); // let the write-behind save land
+  const pub = await api(`/r/${game3.id}`);
+  const pubHtml = await pub.text();
+  assert(pub.ok && pubHtml.includes("Final results") && pubHtml.includes("Crowd Favorite") && !pubHtml.includes("answer"), "public results page shows standings and awards without signing in");
+  for (const c of [h3, d3, pa, pw, stolen]) c.s.close();
 
   // ---- boards: concurrent-edit protection, public gallery, leaderboard, guest builder ----
   const made = await (await api("/api/boards", { method: "POST", cookie, body: JSON.stringify({ title: `Smoke gallery ${game.code}`, template: "quick" }) })).json();

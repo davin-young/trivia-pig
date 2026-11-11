@@ -32,8 +32,21 @@ export default function DisplayClient({ code }: { code: string }) {
   const [reactions, setReactions] = useState<{ key: number; emoji: string; x: number; name: string }[]>([]);
   const reactionKey = useRef(0);
 
+  const [caption, setCaption] = useState<{ key: number; text: string } | null>(null);
+  const captionKey = useRef(0);
+  const say = (text: string) => {
+    const key = ++captionKey.current;
+    setCaption({ key, text });
+    setTimeout(() => setCaption((c) => (c?.key === key ? null : c)), 3200);
+  };
+
   const onFx = (fx: FxEvent) => {
     const v = viewRef.current;
+    if (v?.settings.captions && fx.cue !== "react") {
+      const who = fx.playerId ? (v.players.find((p) => p.id === fx.playerId)?.name ?? "A player") : "";
+      const text = fx.cue === "sfx" ? `[${fx.id ?? "sound"}]` : fx.cue === "buzz" ? `[buzz] ${who} buzzed in` : fx.cue === "join" ? `[chime] ${who} joined` : CAPTIONS[fx.cue];
+      if (text) say(text);
+    }
     if (fx.cue === "react") {
       if (!fx.id || v?.settings.reactions === false) return;
       const key = ++reactionKey.current;
@@ -67,6 +80,7 @@ export default function DisplayClient({ code }: { code: string }) {
     if (timerEnd && left === 0 && firedFor.current !== timerEnd) {
       firedFor.current = timerEnd;
       if (view?.timer?.label !== "final") sound().play("timesUp");
+      if (view?.settings.captions) say("[beeps] Time is up");
     }
   }, [left, timerEnd, view?.timer?.label]);
 
@@ -93,9 +107,14 @@ export default function DisplayClient({ code }: { code: string }) {
     <Shell>
       <ConnBanner status={status} error={error} />
       <Stage view={view} now={now} presence={presence} />
+      {caption && (
+        <div key={caption.key} className="anim-pop pointer-events-none fixed bottom-[3vmin] left-1/2 z-30 -translate-x-1/2 rounded-[1vmin] bg-black/85 px-[2.4vmin] py-[1vmin] text-[2.8vmin] font-semibold text-white" role="status" aria-live="polite">
+          {caption.text}
+        </div>
+      )}
       {view.screen === "scores" && <ScoresOverlay view={view} />}
       {view.announcement && <Announcement key={view.announcement.at} text={view.announcement.text} />}
-      {view.showJoinQr && view.phase !== "lobby" && <CornerQr code={view.code} />}
+      {view.showJoinQr && view.phase !== "lobby" && !view.settings.hideCode && <CornerQr code={view.code} />}
       {view.screen === "none" && (
         <div className="pointer-events-none fixed inset-0 z-20 overflow-hidden" aria-hidden>
           {reactions.map((r) => (
@@ -122,6 +141,24 @@ export default function DisplayClient({ code }: { code: string }) {
   );
 }
 
+/** Text shown for each sound cue when captions are on. */
+const CAPTIONS: Record<string, string> = {
+  boardFill: "[chimes] The board fills in",
+  clueOpen: "[whoosh] Clue opened",
+  buzzersOpen: "[tone] Buzzers are open",
+  dailyDouble: "[fanfare] Daily Double",
+  correct: "[ding] Correct",
+  incorrect: "[buzzer] Incorrect",
+  reveal: "[chime] Answer revealed",
+  roundTransition: "[fanfare] Next round",
+  finalStart: "[chords] Final round",
+  think: "[music] Thinking music",
+  finalReveal: "[swish] Reveal",
+  finalWager: "[rising tones] Wager",
+  gameOver: "[fanfare] Game over",
+  announce: "[chime] Announcement",
+};
+
 function Shell({ children }: { children: React.ReactNode }) {
   return <main className="relative h-dvh w-screen select-none overflow-hidden bg-[var(--board-edge)] text-white">{children}</main>;
 }
@@ -129,7 +166,7 @@ function Shell({ children }: { children: React.ReactNode }) {
 function Stage({ view, now, presence }: { view: GameView; now: () => number; presence: PresenceView | null }) {
   switch (view.phase) {
     case "lobby":
-      return <Lobby view={view} presence={presence} />;
+      return <Lobby view={view} presence={presence} now={now} />;
     case "board":
       return (
         <WithPodiums view={view}>
@@ -158,7 +195,7 @@ const TILTS = [-2.2, 1.6, -1.1, 2.4, -1.8, 0.9, 2, -2.6, 1.2, -0.7];
  * The room screen everyone sees while people join: where to go, the room code,
  * and a wall of name cards that pop in as each person finishes drawing theirs.
  */
-function Lobby({ view, presence }: { view: GameView; presence: PresenceView | null }) {
+function Lobby({ view, presence, now }: { view: GameView; presence: PresenceView | null; now: () => number }) {
   const origin = useOrigin();
   const joinUrl = `${origin}/join?code=${view.code}`;
   const host = origin.replace(/^https?:\/\//, "");
@@ -177,24 +214,34 @@ function Lobby({ view, presence }: { view: GameView; presence: PresenceView | nu
           <div className="cat-text text-[2.6vmin] text-white/60">🐷 {APP_NAME}</div>
           <h1 className="cat-text truncate text-[5.5vmin] leading-tight text-white">{view.title}</h1>
         </div>
-        <div className="flex shrink-0 items-center gap-[2.5vmin] rounded-[2vmin] bg-black/35 p-[1.6vmin] pl-[2.6vmin] shadow-xl ring-1 ring-white/10">
-          <div className="flex flex-col gap-[0.6vmin]">
-            <div className="text-[2.2vmin] text-white/70">
-              On your phone, go to <span className="cat-text text-[2.8vmin] text-gold">{host}/join</span>
-            </div>
-            <div className="flex items-center gap-[1.6vmin]">
-              <span className="text-[2vmin] font-semibold uppercase tracking-[0.25em] text-white/60">Room code</span>
-              <div className="flex gap-[0.8vmin]" aria-label={`Room code ${view.code}`}>
-                {view.code.split("").map((ch, i) => (
-                  <span key={i} className="money grid h-[10vmin] w-[7.6vmin] place-items-center rounded-[1.2vmin] bg-white text-[8vmin] leading-none text-[var(--board-edge)] shadow-lg">
-                    {ch}
-                  </span>
-                ))}
-              </div>
+        {view.settings.hideCode ? (
+          <div className="flex shrink-0 items-center gap-[2vmin] rounded-[2vmin] bg-black/35 px-[2.6vmin] py-[1.8vmin] shadow-xl ring-1 ring-white/10">
+            <span className="text-[5vmin]">🤫</span>
+            <div>
+              <div className="cat-text text-[3vmin] text-gold">Room code hidden</div>
+              <div className="text-[2.1vmin] text-white/70">The host will send you the link to join.</div>
             </div>
           </div>
-          {origin && <Qr value={joinUrl} className="w-[15vmin] shrink-0 rounded-[1vmin] bg-white p-[0.6vmin] [&>svg]:h-auto [&>svg]:w-full" />}
-        </div>
+        ) : (
+          <div className="flex shrink-0 items-center gap-[2.5vmin] rounded-[2vmin] bg-black/35 p-[1.6vmin] pl-[2.6vmin] shadow-xl ring-1 ring-white/10">
+            <div className="flex flex-col gap-[0.6vmin]">
+              <div className="text-[2.2vmin] text-white/70">
+                On your phone, go to <span className="cat-text text-[2.8vmin] text-gold">{host}/join</span>
+              </div>
+              <div className="flex items-center gap-[1.6vmin]">
+                <span className="text-[2vmin] font-semibold uppercase tracking-[0.25em] text-white/60">Room code</span>
+                <div className="flex gap-[0.8vmin]" aria-label={`Room code ${view.code}`}>
+                  {view.code.split("").map((ch, i) => (
+                    <span key={i} className="money grid h-[10vmin] w-[7.6vmin] place-items-center rounded-[1.2vmin] bg-white text-[8vmin] leading-none text-[var(--board-edge)] shadow-lg">
+                      {ch}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+            {origin && <Qr value={joinUrl} className="w-[15vmin] shrink-0 rounded-[1vmin] bg-white p-[0.6vmin] [&>svg]:h-auto [&>svg]:w-full" />}
+          </div>
+        )}
       </header>
 
       <div ref={wall} className="grid min-h-0 flex-1 place-content-center overflow-hidden" style={{ gridTemplateColumns: `repeat(${fit.cols}, ${fit.w}px)`, gap: fit.gap, fontSize: fit.w * 0.075 }}>
@@ -210,6 +257,16 @@ function Lobby({ view, presence }: { view: GameView; presence: PresenceView | nu
                 <div className="aspect-[5/2] w-full rounded-[0.45em] bg-[var(--board-deep)] p-[0.2em] text-[1.5em]">
                   <Signature player={p} className="h-full w-full" />
                 </div>
+                {p.avatar && (
+                  <div className="absolute -right-[0.6em] -top-[0.6em] h-[2.9em] w-[2.9em] rounded-full bg-[var(--board-deep)] p-[0.1em]" style={{ boxShadow: `0 0 0 0.15em ${color}` }}>
+                    <Ink drawing={p.avatar} className="h-full w-full" />
+                  </div>
+                )}
+                {view.vipId === p.id && (
+                  <span className="absolute -left-[0.5em] -top-[0.8em] text-[1.5em] leading-none drop-shadow" title="Can start the game from their phone">
+                    👑
+                  </span>
+                )}
                 <div className="mt-[0.3em] flex h-[1.4em] items-center justify-center gap-[0.4em] text-[0.85em] font-semibold leading-none">
                   <span className="h-[0.6em] w-[0.6em] shrink-0 rounded-full" style={{ background: color }} />
                   <span className="truncate">{p.name}</span>
@@ -232,13 +289,35 @@ function Lobby({ view, presence }: { view: GameView; presence: PresenceView | nu
       <footer className="flex items-center justify-between gap-[3vmin] text-[2.6vmin]">
         <div className="text-white/80">
           <span className="money text-[3.6vmin] text-gold">{n}</span> {n === 1 ? "player is" : "players are"} in
+          {view.crowd.count > 0 && <span className="text-white/60"> · {view.crowd.count} watching</span>}
         </div>
         {view.lobbyLocked ? (
           <div className="rounded-full bg-red-600 px-[2vmin] py-[0.6vmin] text-[2.2vmin] font-bold">ROOM LOCKED · starting soon</div>
         ) : (
-          <div className="animate-pulse text-white/70">{n === 0 ? "Waiting for the first player…" : "Draw your name to join. The host starts when everybody is in."}</div>
+          <div className="animate-pulse text-white/70">
+            {n === 0 ? "Waiting for the first player…" : view.vipId ? `Draw your name to join. 👑 ${list.find((p) => p.id === view.vipId)?.name ?? "The host"} starts when everybody is in.` : "Draw your name to join. The host starts when everybody is in."}
+          </div>
         )}
       </footer>
+      {view.startingAt && <StartCountdown at={view.startingAt} now={now} />}
+    </div>
+  );
+}
+
+/** "Starting in 3… 2… 1…" over the room screen, with a tick each second. */
+function StartCountdown({ at, now }: { at: number; now: () => number }) {
+  const left = useCountdown(at, now) ?? 0;
+  const sec = Math.max(1, Math.ceil(left / 1000));
+  useEffect(() => {
+    sound().play("tick");
+  }, [sec]);
+  return (
+    <div className="pointer-events-none fixed inset-0 z-10 grid place-items-center bg-black/55">
+      <div className="text-center">
+        <div className="cat-text text-[5vmin] text-white/85">Get ready! Starting in</div>
+        <div key={sec} className="anim-pop money text-[34vmin] leading-none">{sec}</div>
+        <div className="text-[2.6vmin] text-white/70">Last chance to join</div>
+      </div>
     </div>
   );
 }
@@ -513,6 +592,11 @@ function PodiumRow({ view, list: everyone }: { view: GameView; list: Contestant[
               ) : (
                 <Signature player={c.players[0]} className="h-full w-full" />
               )}
+              {!isTeam && c.players[0]?.avatar && (
+                <div className="absolute left-[0.3vmin] top-[0.3vmin] h-[3.6vmin] w-[3.6vmin] rounded-full bg-black/45">
+                  <Ink drawing={c.players[0].avatar} className="h-full w-full" />
+                </div>
+              )}
               {view.controlId === c.id && view.phase === "board" && <div className="absolute right-[0.5vmin] top-[0.3vmin] text-[1.8vmin] text-gold">●</div>}
             </div>
           </div>
@@ -609,6 +693,8 @@ function WinnerScreen({ view }: { view: GameView }) {
   const ranked = useMemo(() => [...contestants(view)].sort((a, b) => (view.scores[b.id] ?? 0) - (view.scores[a.id] ?? 0)), [view]);
   const top = ranked[0];
   const winners = ranked.filter((c) => (view.scores[c.id] ?? 0) === (view.scores[top?.id ?? ""] ?? 0));
+  const rest = ranked.slice(winners.length);
+  const origin = useOrigin();
   useEffect(() => {
     const end = Date.now() + 4500;
     const colors = ["#ffcf3f", "#ffffff", "#4ff0b1", "#ff5d73", "#7bdff2"];
@@ -622,15 +708,15 @@ function WinnerScreen({ view }: { view: GameView }) {
     return () => cancelAnimationFrame(raf);
   }, []);
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-[3vmin] bg-gradient-to-b from-[var(--board)] to-[var(--board-edge)] p-[4vmin]">
+    <div className="flex h-full flex-col items-center justify-center gap-[2.2vmin] overflow-hidden bg-gradient-to-b from-[var(--board)] to-[var(--board-edge)] p-[3vmin]">
       <div className="cat-text text-[4vmin] text-white/70">{winners.length > 1 ? "It's a tie!" : "Our champion"}</div>
       <div className="flex gap-[3vmin]">
         {winners.map((w) => (
           <div key={w.id} className="anim-pop flex flex-col items-center">
-            <div className="aspect-[5/2] w-[50vmin] rounded-[1.5vmin] bg-[var(--board-deep)] p-[1vmin] text-[6vmin] shadow-2xl ring-[0.5vmin] ring-gold">
+            <div className="aspect-[5/2] w-[42vmin] rounded-[1.5vmin] bg-[var(--board-deep)] p-[1vmin] text-[6vmin] shadow-2xl ring-[0.5vmin] ring-gold">
               {view.settings.mode === "team" ? <div className="cat-text grid h-full place-items-center" style={{ color: w.color }}>{w.name}</div> : <Signature player={w.players[0]} className="h-full w-full" />}
             </div>
-            <div className="money mt-[2vmin] text-[8vmin]">{formatScore(view.scores[w.id] ?? 0)}</div>
+            <div className="money mt-[1vmin] text-[6.5vmin]">{formatScore(view.scores[w.id] ?? 0)}</div>
           </div>
         ))}
       </div>
@@ -646,16 +732,47 @@ function WinnerScreen({ view }: { view: GameView }) {
           ))}
         </div>
       )}
-      <div className="mt-[2vmin] flex flex-wrap justify-center gap-[2vmin]">
-        {ranked.slice(winners.length).map((c, i) => (
-          <div key={c.id} className="rounded-[1vmin] bg-white/10 px-[2vmin] py-[1vmin] text-[2.6vmin]">
-            <span className="text-white/50">#{i + winners.length + 1}</span> {c.name} <span className="money ml-[1vmin]">{formatScore(view.scores[c.id] ?? 0)}</span>
+      <div className="flex max-w-[96vw] flex-wrap items-stretch justify-center gap-[1.4vmin]">
+        {rest.slice(0, GALLERY_MAX).map((c, i) => (
+          <div key={c.id} className="anim-pop flex w-[20vmin] flex-col rounded-[1.2vmin] bg-[var(--board-deep)] p-[0.7vmin] ring-1 ring-white/15" style={{ animationDelay: `${0.4 + i * 0.12}s` }}>
+            <div className="relative aspect-[5/2] w-full rounded-[0.8vmin] bg-black/25 text-[2.2vmin]">
+              {view.settings.mode === "team" || !c.players[0] ? (
+                <div className="cat-text grid h-full place-items-center" style={{ color: c.color }}>{c.name}</div>
+              ) : (
+                <Signature player={c.players[0]} className="h-full w-full" />
+              )}
+              {c.players[0]?.avatar && view.settings.mode !== "team" && (
+                <div className="absolute -right-[0.8vmin] -top-[0.8vmin] h-[4.4vmin] w-[4.4vmin] rounded-full bg-[var(--board-deep)] ring-1 ring-white/30">
+                  <Ink drawing={c.players[0].avatar} className="h-full w-full" />
+                </div>
+              )}
+            </div>
+            <div className="mt-[0.5vmin] flex items-baseline gap-[0.8vmin] text-[1.8vmin]">
+              <span className="text-white/50">#{i + winners.length + 1}</span>
+              <span className="min-w-0 flex-1 truncate font-semibold">{c.name}</span>
+              <span>{(view.awards ?? []).filter((a) => a.winnerId === c.id || c.players.some((p) => p.id === a.winnerId)).map((a) => a.emoji).join("")}</span>
+              <span className={`money ${(view.scores[c.id] ?? 0) < 0 ? "!text-red-400" : ""}`}>{formatScore(view.scores[c.id] ?? 0)}</span>
+            </div>
           </div>
         ))}
+        {rest.length > GALLERY_MAX && <div className="grid place-items-center px-[2vmin] text-[2.2vmin] text-white/60">+{rest.length - GALLERY_MAX} more</div>}
       </div>
+      {origin && view.gameId && !view.settings.hideCode && (
+        <div className="fixed bottom-[2vmin] right-[2vmin] z-10 flex items-center gap-[1.2vmin] rounded-[1.2vmin] bg-black/55 p-[1vmin] pr-[1.6vmin]">
+          <Qr value={`${origin}/r/${view.gameId}`} className="w-[11vmin] rounded-[0.6vmin] bg-white p-[0.4vmin] [&>svg]:h-auto [&>svg]:w-full" />
+          <div className="text-[1.8vmin] leading-snug text-white/80">
+            Scan to keep
+            <br />
+            the results
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
+/** Runner-up cards shown under the champion before it turns into a count. */
+const GALLERY_MAX = 21;
 
 // ----------------------------------------------------------------- overlays
 

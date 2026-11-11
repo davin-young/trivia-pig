@@ -7,9 +7,9 @@ import { sound } from "@/client/sound";
 import { useWakeLock } from "@/client/useWakeLock";
 import { DrawingPad } from "@/components/DrawingPad";
 import { Ink } from "@/components/Ink";
-import { ConnBanner, MediaView, StatusDot, TimerBar, contestantName, formatScore, playerName, useCountdown } from "@/components/game";
+import { ConnBanner, MediaView, StatusDot, TimerBar, contestantName, contestants, formatScore, playerName, useCountdown } from "@/components/game";
 import type { GameView } from "@/engine/views";
-import { FINAL_CANVAS, NAME_CANVAS, isEmptyDrawing, type Drawing } from "@/shared/strokes";
+import { AVATAR_CANVAS, FINAL_CANVAS, NAME_CANVAS, isEmptyDrawing, type Drawing } from "@/shared/strokes";
 import { REACTIONS } from "@/shared/protocol";
 
 export default function PlayerClient({ code }: { code: string }) {
@@ -74,6 +74,15 @@ export default function PlayerClient({ code }: { code: string }) {
   const me = view.me;
   const myPlayer = me ? view.players.find((p) => p.id === me.playerId) : undefined;
 
+  if (me?.audience) {
+    return (
+      <main className="flex min-h-dvh flex-col bg-[var(--board-edge)] pb-[env(safe-area-inset-bottom)]">
+        <ConnBanner status={status} error={error} />
+        <AudienceStage view={view} emit={emit} />
+      </main>
+    );
+  }
+
   if (!me || !myPlayer || myPlayer.removed) {
     return (
       <>
@@ -115,20 +124,71 @@ function Center({ children }: { children: React.ReactNode }) {
 function JoinForm({ view, emit, code, rejoinName }: { view: GameView; emit: Emit; code: string; rejoinName?: string }) {
   const [name, setName] = useState(rejoinName ?? "");
   const [drawing, setDrawing] = useState<Drawing | null>(null);
+  const [avatar, setAvatar] = useState<Drawing | null>(null);
+  const [showAvatar, setShowAvatar] = useState(false);
   const [teamId, setTeamId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [seats, setSeats] = useState<{ id: string; name: string }[]>([]);
   const closed = view.lobbyLocked || (view.phase !== "lobby" && !view.settings.allowLateJoin);
+  const canWatch = view.settings.audience;
 
-  async function submit() {
-    setBusy(true);
-    setErr(null);
-    const res = await emit("player:join", { name: name.trim(), signature: drawing && !isEmptyDrawing(drawing) ? drawing : null, teamId });
+  // Seats whose phone dropped off: let the person take theirs back by name.
+  const playerCount = view.players.length;
+  useEffect(() => {
+    if (rejoinName || !view.settings.reclaimSeats) return;
+    let live = true;
+    void emit("player:seats", {}).then((r) => {
+      if (live && r.ok) setSeats((r.data as { seats: { id: string; name: string }[] }).seats ?? []);
+    });
+    return () => {
+      live = false;
+    };
+  }, [emit, rejoinName, playerCount, view.settings.reclaimSeats]);
+
+  function done(res: Awaited<ReturnType<Emit>>) {
     setBusy(false);
     if (!res.ok) return setErr(res.error);
     const data = res.data as { playerToken?: string };
     if (data.playerToken) setPlayerToken(code, data.playerToken);
   }
+  async function submit(asAudience = false) {
+    setBusy(true);
+    setErr(null);
+    done(
+      await emit("player:join", {
+        name: name.trim(),
+        signature: !asAudience && drawing && !isEmptyDrawing(drawing) ? drawing : null,
+        avatar: !asAudience && avatar && !isEmptyDrawing(avatar) ? avatar : null,
+        teamId,
+        audience: asAudience || undefined,
+      }),
+    );
+  }
+  async function reclaim(playerId: string) {
+    setBusy(true);
+    setErr(null);
+    done(await emit("player:reclaim", { playerId }));
+  }
+
+  const nameField = (
+    <label className="flex flex-col gap-1">
+      <span className="text-sm text-white/70">Your name</span>
+      <input className="input text-lg" value={name} maxLength={24} onChange={(e) => setName(e.target.value)} placeholder="Type your name" autoComplete="nickname" />
+    </label>
+  );
+  const seatPicker = seats.length > 0 && !rejoinName && (
+    <div className="rounded-xl border border-line bg-white/5 p-3">
+      <div className="mb-2 text-sm text-white/70">Already playing and lost your connection? Tap your name to take your seat back.</div>
+      <div className="flex flex-wrap gap-2">
+        {seats.map((seat) => (
+          <button key={seat.id} type="button" className="btn-ghost !py-2" disabled={busy} onClick={() => reclaim(seat.id)}>
+            {seat.name}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-xl flex-col gap-4 p-4">
@@ -138,13 +198,25 @@ function JoinForm({ view, emit, code, rejoinName }: { view: GameView; emit: Emit
         <div className="money text-xl tracking-widest">{code}</div>
       </div>
       {closed && !rejoinName ? (
-        <div className="card text-center">{view.lobbyLocked ? "The host has locked the lobby." : "This game has already started and isn't accepting new players."}</div>
+        <>
+          <div className="card text-center">{view.lobbyLocked ? "The host has locked the room." : "This game has already started and isn't accepting new players."}</div>
+          {seatPicker}
+          {canWatch && (
+            <>
+              <p className="text-center text-sm text-white/70">You can still watch: send reactions to the big screen and cheer for a player.</p>
+              {nameField}
+              {err && <div className="rounded-lg bg-red-600/20 p-3 text-red-300">{err}</div>}
+              <button className="btn-primary py-4 text-xl" disabled={busy || !name.trim()} onClick={() => submit(true)}>
+                {busy ? "Joining…" : "👀 Join the audience"}
+              </button>
+            </>
+          )}
+          {!canWatch && err && <div className="rounded-lg bg-red-600/20 p-3 text-red-300">{err}</div>}
+        </>
       ) : (
         <>
-          <label className="flex flex-col gap-1">
-            <span className="text-sm text-white/70">Your name</span>
-            <input className="input text-lg" value={name} maxLength={24} onChange={(e) => setName(e.target.value)} placeholder="Type your name" autoComplete="nickname" />
-          </label>
+          {seatPicker}
+          {nameField}
           <div>
             <div className="mb-1 flex items-baseline justify-between">
               <span className="text-sm text-white/70">Sign your name ✍️</span>
@@ -152,6 +224,25 @@ function JoinForm({ view, emit, code, rejoinName }: { view: GameView; emit: Emit
             </div>
             <DrawingPad width={NAME_CANVAS.w} height={NAME_CANVAS.h} multiColor={view.settings.multiColor} onChange={setDrawing} placeholder="Draw your name here" />
           </div>
+          {view.settings.avatars &&
+            (showAvatar ? (
+              <div>
+                <div className="mb-1 flex items-baseline justify-between">
+                  <span className="text-sm text-white/70">Doodle yourself 🎨</span>
+                  <button type="button" className="text-xs text-white/50 underline" onClick={() => { setShowAvatar(false); setAvatar(null); }}>
+                    Skip it
+                  </button>
+                </div>
+                <div className="mx-auto max-w-[16rem]">
+                  <DrawingPad width={AVATAR_CANVAS.w} height={AVATAR_CANVAS.h} multiColor={view.settings.multiColor} onChange={setAvatar} placeholder="A face, a pig, anything" />
+                </div>
+              </div>
+            ) : (
+              <button type="button" className="btn-ghost" onClick={() => setShowAvatar(true)}>
+                🎨 Add a doodle avatar (optional)
+              </button>
+            ))}
+          {view.settings.familyMode && <p className="text-xs text-white/50">Family mode is on: the host approves drawings before they appear on the big screen.</p>}
           {view.settings.mode === "team" && view.teams.length > 0 && (
             <div>
               <div className="mb-1 text-sm text-white/70">Team (host can change this)</div>
@@ -165,19 +256,97 @@ function JoinForm({ view, emit, code, rejoinName }: { view: GameView; emit: Emit
             </div>
           )}
           {err && <div className="rounded-lg bg-red-600/20 p-3 text-red-300">{err}</div>}
-          <button className="btn-primary py-4 text-xl" disabled={busy || !name.trim()} onClick={submit}>
+          <button className="btn-primary py-4 text-xl" disabled={busy || !name.trim()} onClick={() => submit(false)}>
             {busy ? "Joining…" : rejoinName ? "Rejoin game" : "Join game"}
           </button>
+          {canWatch && !rejoinName && (
+            <button type="button" className="text-sm text-white/60 underline disabled:opacity-40" disabled={busy || !name.trim()} onClick={() => submit(true)}>
+              Just watching? Join the audience instead
+            </button>
+          )}
         </>
       )}
     </main>
   );
 }
 
+// ----------------------------------------------------------------- audience
+
+/** Watching only: follow along, send reactions, and cheer for a contestant. */
+function AudienceStage({ view, emit }: { view: GameView; emit: Emit }) {
+  const me = view.me!;
+  const [msg, setMsg] = useState<string | null>(null);
+  const ranked = [...contestants(view)].sort((a, b) => (view.scores[b.id] ?? 0) - (view.scores[a.id] ?? 0));
+  const c = view.clue;
+  const f = view.final;
+  async function cheer(id: string) {
+    const r = await emit("player:cheer", { contestantId: me.cheerFor === id ? null : id });
+    setMsg(r.ok ? null : r.error);
+  }
+  return (
+    <>
+      <header className="flex items-center gap-3 border-b border-white/10 bg-[var(--board-deep)] px-4 py-2">
+        <span className="rounded-full bg-white/15 px-2 py-0.5 text-xs font-semibold">👀 AUDIENCE</span>
+        <span className="min-w-0 flex-1 truncate font-semibold">{me.name}</span>
+        <span className="truncate text-sm text-white/60">{view.title}</span>
+      </header>
+      <div className="flex flex-1 flex-col gap-4 p-4">
+        <div className="card text-center">
+          {view.phase === "lobby" && <p>You&apos;re in the audience. Watch the big screen: the game starts soon.</p>}
+          {view.phase === "board" && <p className="text-white/70">Waiting for the next clue…</p>}
+          {view.phase === "clue" && c && (
+            <>
+              <div className="text-sm text-white/60">{c.category} · {formatScore(c.value)}</div>
+              <p className="mt-1 text-lg font-semibold">{c.text ?? "Daily Double! Waiting for the wager…"}</p>
+              {c.answer && <p className="mt-2 text-gold">{c.answer}</p>}
+            </>
+          )}
+          {view.phase === "final" && f && (
+            <>
+              <div className="text-sm text-white/60">Final · {f.category}</div>
+              {f.text && <p className="mt-1 text-lg font-semibold">{f.text}</p>}
+              {f.answer && <p className="mt-2 text-gold">{f.answer}</p>}
+            </>
+          )}
+          {view.phase === "finished" && <p className="text-lg font-semibold">🏁 Game over! {ranked[0] ? `${ranked[0].name} wins.` : ""}</p>}
+        </div>
+
+        {ranked.length > 0 && (
+          <div>
+            <div className="mb-2 flex items-baseline justify-between">
+              <h2 className="font-semibold">📣 Who are you cheering for?</h2>
+              <span className="text-xs text-white/50">The most-cheered player wins Crowd Favorite</span>
+            </div>
+            <div className="flex flex-col gap-2">
+              {ranked.map((r) => (
+                <button
+                  key={r.id}
+                  type="button"
+                  aria-pressed={me.cheerFor === r.id}
+                  disabled={view.phase === "finished"}
+                  onClick={() => cheer(r.id)}
+                  className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 text-left ${me.cheerFor === r.id ? "border-gold bg-gold/15" : "border-line bg-white/5"}`}
+                >
+                  <span className="text-xl">{me.cheerFor === r.id ? "📣" : "🤍"}</span>
+                  <span className="min-w-0 flex-1 truncate font-semibold" style={{ color: r.color }}>{r.name}</span>
+                  {(view.crowd.cheers[r.id] ?? 0) > 0 && <span className="text-xs text-white/60">{view.crowd.cheers[r.id]} cheering</span>}
+                  <span className={`money ${(view.scores[r.id] ?? 0) < 0 ? "!text-red-400" : ""}`}>{formatScore(view.scores[r.id] ?? 0)}</span>
+                </button>
+              ))}
+            </div>
+            {msg && <div className="mt-2 text-sm text-red-300">{msg}</div>}
+          </div>
+        )}
+        <div className="mt-auto">{view.settings.reactions && <ReactionBar emit={emit} />}</div>
+      </div>
+    </>
+  );
+}
+
 // -------------------------------------------------------------------- stage
 
 function PlayerStage({ view, emit, now, onFlash }: { view: GameView; emit: Emit; now: () => number; onFlash: (s: string) => void }) {
-  if (view.phase === "lobby") return <LobbyWait view={view} emit={emit} />;
+  if (view.phase === "lobby") return <LobbyWait view={view} emit={emit} now={now} />;
   // Reactions stay out of the way while a clue is live so nobody mis-taps the buzzer.
   const quiet =
     view.phase === "board" ||
@@ -323,7 +492,10 @@ function AllPlayPlayer({ view, emit, now }: { view: GameView; emit: Emit; now: (
   );
 }
 
-function LobbyWait({ view, emit }: { view: GameView; emit: Emit }) {
+function LobbyWait({ view, emit, now }: { view: GameView; emit: Emit; now: () => number }) {
+  const left = useCountdown(view.startingAt, now);
+  const isVip = view.vipId === view.me!.playerId;
+  const others = view.players.filter((x) => !x.removed).length - 1;
   const me = view.me!;
   const p = view.players.find((x) => x.id === me.playerId)!;
   const [redraw, setRedraw] = useState(false);
@@ -355,12 +527,50 @@ function LobbyWait({ view, emit }: { view: GameView; emit: Emit }) {
     <div className="flex flex-1 flex-col items-center justify-center gap-5 text-center">
       <div className="text-6xl">🎉</div>
       <h2 className="text-2xl font-bold">You&apos;re in!</h2>
-      <div className="aspect-[5/2] w-full max-w-sm rounded-xl bg-[var(--board)] p-2">
+      <div className="relative aspect-[5/2] w-full max-w-sm rounded-xl bg-[var(--board)] p-2">
         {p.signature ? <Ink drawing={p.signature} className="h-full w-full" /> : <div className="cat-text grid h-full place-items-center text-3xl">{p.name}</div>}
+        {p.avatar && (
+          <div className="absolute -right-3 -top-3 h-16 w-16 rounded-full bg-[var(--board-deep)] ring-2 ring-white/40">
+            <Ink drawing={p.avatar} className="h-full w-full" />
+          </div>
+        )}
       </div>
-      {p.signatureHidden && <div className="text-sm text-yellow-300">The host hid your drawing — try redrawing it.</div>}
+      {p.signatureHidden && (
+        <div className="text-sm text-yellow-300">
+          {view.settings.familyMode ? "Your drawing shows on the big screen once the host approves it." : "The host hid your drawing — try redrawing it."}
+        </div>
+      )}
       <button className="btn-ghost" onClick={() => setRedraw(true)}>✏️ Redraw my name</button>
-      <p className="text-white/60">Watch the big screen. The game will start soon.</p>
+      {left !== null ? (
+        <div className="w-full max-w-sm rounded-2xl border border-gold/60 bg-gold/10 p-4">
+          <div className="text-sm text-white/70">Starting in</div>
+          <div className="money text-6xl">{Math.max(1, Math.ceil(left / 1000))}</div>
+          {isVip && (
+            <button className="btn-ghost mt-2 w-full" onClick={async () => { const r = await emit("player:start", { cancel: true }); setMsg(r.ok ? null : r.error); }}>
+              Wait, not yet
+            </button>
+          )}
+        </div>
+      ) : isVip ? (
+        <div className="w-full max-w-sm rounded-2xl border border-gold/60 bg-gold/10 p-4">
+          <div className="mb-2 text-sm text-white/80">👑 You were first in, so you can start the game.</div>
+          <button
+            className="btn-primary w-full py-4 text-xl"
+            onClick={async () => {
+              if (others < 1 && !confirm("You are the only player so far. Start anyway?")) return;
+              const r = await emit("player:start", {});
+              setMsg(r.ok ? null : r.error);
+            }}
+          >
+            Everybody&apos;s in!
+          </button>
+          {msg && <div className="mt-2 text-sm text-red-300">{msg}</div>}
+        </div>
+      ) : (
+        <p className="text-white/60">
+          Watch the big screen. {view.vipId ? `${view.players.find((x) => x.id === view.vipId)?.name ?? "The host"} starts the game when everybody is in.` : "The game will start soon."}
+        </p>
+      )}
     </div>
   );
 }
