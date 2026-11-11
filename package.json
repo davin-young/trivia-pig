@@ -1,0 +1,66 @@
+{
+  "name": "jeppidy",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Self-hosted real-time Jeopardy-style game: display, host iPad, and player phones in sync.",
+  "type": "module",
+  "engines": {
+    "node": ">=20.11"
+  },
+  "scripts": {
+    "dev": "tsx watch --ignore ./.next --ignore ./node_modules server.ts",
+    "build": "prisma generate && next build && node scripts/build-server.mjs",
+    "start": "NODE_ENV=production node dist/server.js",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:seed": "tsx prisma/seed.ts",
+    "db:studio": "prisma studio"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1166.0",
+    "@prisma/client": "^6.19.3",
+    "bcryptjs": "^3.0.3",
+    "canvas-confetti": "^1.9.4",
+    "nanoid": "^6.0.2",
+    "next": "^16.4.6",
+    "nodemailer": "^10.5.0",
+    "perfect-freehand": "^1.2.3",
+    "qrcode": "^1.5.4",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "socket.io": "^4.8.4",
+    "socket.io-client": "^4.8.4",
+    "tsx": "^4.23.15",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.5",
+    "@types/canvas-confetti": "^1.9.0",
+    "@types/node": "^22.20.5",
+    "@types/nodemailer": "^8.0.2",
+    "@types/qrcode": "^1.5.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "esbuild": "^0.28.2",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^16.4.6",
+    "postcss": "^8.5.32",
+    "prisma": "^6.19.3",
+    "tailwindcss": "^4.3.5",
+    "typescript": "5.9",
+    "vitest": "^5.1.0"
+  },
+  "allowScripts": {
+    "@prisma/client@6.19.3": true,
+    "@prisma/engines@6.19.3": true,
+    "esbuild@0.28.2": true,
+    "prisma@6.19.3": true
+  }
+}
