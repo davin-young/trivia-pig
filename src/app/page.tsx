@@ -17,6 +17,10 @@ export default async function Home() {
         <Link href="/join" className="btn-primary py-4 text-xl">📱 Join a game</Link>
         <Link href="/display" className="btn-ghost py-3">📺 Open a display</Link>
         <Link href={user ? "/dashboard" : "/login"} className="btn-ghost py-3">🎙️ {user ? "Host dashboard" : "Host sign in"}</Link>
+        <div className="grid grid-cols-2 gap-3">
+          {!user && <Link href="/try" className="btn-ghost py-3 text-sm">✏️ Try the board builder</Link>}
+          <Link href="/gallery" className={`btn-ghost py-3 text-sm ${user ? "col-span-2" : ""}`}>🖼️ Board gallery</Link>
+        </div>
       </div>
     </main>
   );

@@ -18,5 +18,6 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
       content: reId(parseContent(board.content)) as unknown as Prisma.InputJsonValue,
     },
   });
+  if (board.ownerId !== user.id) await prisma.board.update({ where: { id: board.id }, data: { copies: { increment: 1 } } }).catch(() => {});
   return json({ id: copy.id });
 }

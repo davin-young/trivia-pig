@@ -140,24 +140,26 @@ export function ShareDialog({
   onClose,
 }: {
   boardId: string;
-  initial: { token: string | null; mode: "VIEW" | "COPY" };
+  initial: { token: string | null; mode: "VIEW" | "COPY"; listed?: boolean };
   onClose: () => void;
 }) {
+  const [listed, setListed] = useState(!!initial.token && !!initial.listed);
   const [mode, setMode] = useState<"VIEW" | "COPY" | "OFF">(initial.token ? initial.mode : "OFF");
   const [url, setUrl] = useState<string | null>(initial.token ? `${typeof window !== "undefined" ? window.location.origin : ""}/share/${initial.token}` : null);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function apply(next: "VIEW" | "COPY" | "OFF") {
+  async function apply(next: "VIEW" | "COPY" | "OFF", list?: boolean) {
     setBusy(true);
     setError(null);
-    const res = await fetch(`/api/boards/${boardId}/share`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mode: next }) });
+    const res = await fetch(`/api/boards/${boardId}/share`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mode: next, listed: list }) });
     const data = await res.json().catch(() => ({}));
     setBusy(false);
     if (!res.ok) return setError(data.error ?? "Couldn't update sharing");
     setMode(next);
     setUrl(data.url ?? null);
+    setListed(!!data.listed);
   }
 
   const options: { id: "OFF" | "VIEW" | "COPY"; label: string; hint: string }[] = [
@@ -189,6 +191,17 @@ export function ShareDialog({
               {copied ? "Copied" : "Copy"}
             </button>
           </div>
+        )}
+        {mode === "COPY" && (
+          <label className="mt-1 flex cursor-pointer items-start gap-3 rounded-xl border border-line p-3">
+            <input type="checkbox" className="mt-1 h-4 w-4" checked={listed} disabled={busy} onChange={(e) => apply("COPY", e.target.checked)} />
+            <span>
+              <span className="font-semibold">List in the public gallery</span>
+              <span className="block text-sm text-white/60">
+                Anyone can find this board at <a className="underline" href="/gallery" target="_blank" rel="noreferrer">/gallery</a>, with its title, description, tags and your name.
+              </span>
+            </span>
+          </label>
         )}
         <p className="text-xs text-white/40">Sharing a board shows its answers. Don&apos;t share a board you&apos;re about to play with the same people.</p>
         {error && <p className="text-sm text-red-300">{error}</p>}

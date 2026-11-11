@@ -2,7 +2,7 @@ import Link from "next/link";
 import { APP_NAME } from "./game";
 
 /** Top navigation for signed-in host pages (dashboard, builder, results, admin). Server component. */
-export function AppNav({ user, active }: { user: { name: string; email: string; isAdmin: boolean }; active?: "boards" | "games" | "team" | "admin" }) {
+export function AppNav({ user, active }: { user: { name: string; email: string; isAdmin: boolean }; active?: "boards" | "games" | "leaderboard" | "team" | "admin" }) {
   const link = (href: string, label: string, key: typeof active) => (
     <Link href={href} className={`rounded-lg px-3 py-1.5 text-sm ${active === key ? "bg-white/10 text-white" : "text-white/60 hover:text-white"}`}>
       {label}
@@ -18,7 +18,11 @@ export function AppNav({ user, active }: { user: { name: string; email: string; 
         <nav className="flex flex-wrap gap-1">
           {link("/dashboard", "Boards", "boards")}
           {link("/dashboard/games", "Games", "games")}
+          {link("/dashboard/leaderboard", "Leaderboard", "leaderboard")}
           {link("/dashboard/team", "Co-hosts", "team")}
+          <Link href="/gallery" className="rounded-lg px-3 py-1.5 text-sm text-white/60 hover:text-white">
+            Gallery
+          </Link>
           {user.isAdmin && link("/admin", "Admin", "admin")}
         </nav>
         <div className="ml-auto flex items-center gap-3 text-sm">

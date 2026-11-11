@@ -27,7 +27,13 @@ export interface EditorBoard {
   content: BoardContent;
   shareToken: string | null;
   shareMode: "VIEW" | "COPY";
+  listed?: boolean;
+  /** Content revision loaded from the server (absent in guest mode). */
+  rev?: number;
 }
+
+/** Where a guest's board lives until they sign in. */
+export const GUEST_DRAFT_KEY = "tp:guest-board";
 
 type Tab = number | "final";
 type SaveStatus = "saved" | "dirty" | "saving" | "error";
@@ -36,8 +42,14 @@ type Drag = { type: "cat"; c: number } | { type: "clue"; c: number; r: number } 
 const MAX_ROUNDS = 4;
 const MAX_COLS = 12;
 
-export function BoardEditor({ board }: { board: EditorBoard }) {
+/**
+ * `guest`: no account. The board autosaves to this browser only, and anything
+ * that needs the server (play, share, history, uploads) asks the person to sign in.
+ */
+export function BoardEditor({ board, guest = false }: { board: EditorBoard; guest?: boolean }) {
   const router = useRouter();
+  const rev = useRef<number | undefined>(board.rev);
+  const [conflict, setConflict] = useState(false);
   const [content, setContent] = useState<BoardContent>(board.content);
   const [meta, setMeta] = useState<BoardMeta>({ title: board.title, description: board.description, tags: board.tags, folder: board.folder });
   const [tab, setTab] = useState<Tab>(board.content.rounds.length ? 0 : "final");
@@ -56,8 +68,9 @@ export function BoardEditor({ board }: { board: EditorBoard }) {
   const chain = useRef<Promise<void>>(Promise.resolve());
   const first = useRef(true);
 
-  const body = () =>
+  const body = (baseRev?: number) =>
     JSON.stringify({
+      baseRev,
       content: latest.current.content,
       title: latest.current.meta.title,
       description: latest.current.meta.description,
@@ -73,10 +86,15 @@ export function BoardEditor({ board }: { board: EditorBoard }) {
     chain.current = chain.current.then(async () => {
       setStatus("saving");
       try {
-        const res = await fetch(`/api/boards/${board.id}`, { method: "PUT", headers: { "content-type": "application/json" }, body: body() });
-        if (!res.ok) {
+        if (guest) {
+          localStorage.setItem(GUEST_DRAFT_KEY, body());
+        } else {
+          const res = await fetch(`/api/boards/${board.id}`, { method: "PUT", headers: { "content-type": "application/json" }, body: body(rev.current) });
           const data = await res.json().catch(() => ({}));
-          throw new Error(data.error ?? `Save failed (${res.status})`);
+          if (res.status === 409 && data.conflict) setConflict(true);
+          if (!res.ok) throw new Error(data.error ?? `Save failed (${res.status})`);
+          if (typeof data.rev === "number") rev.current = data.rev;
+          setConflict(false);
         }
         setSaveError(null);
         setStatus(dirty.current ? "dirty" : "saved");
@@ -87,7 +105,15 @@ export function BoardEditor({ board }: { board: EditorBoard }) {
       }
     });
     return chain.current;
-  }, [board.id]);
+  }, [board.id, guest]);
+
+  /** Keep my version: save over whatever changed elsewhere. */
+  const overwrite = useCallback(() => {
+    rev.current = undefined;
+    dirty.current = true;
+    setConflict(false);
+    void flush();
+  }, [flush]);
 
   useEffect(() => {
     if (first.current) {
@@ -103,13 +129,19 @@ export function BoardEditor({ board }: { board: EditorBoard }) {
   useEffect(() => {
     const onUnload = (e: BeforeUnloadEvent) => {
       if (!dirty.current) return;
+      if (guest) {
+        try {
+          localStorage.setItem(GUEST_DRAFT_KEY, body());
+        } catch {}
+        return;
+      }
       // Best effort save; also ask the browser to confirm leaving.
-      void fetch(`/api/boards/${board.id}`, { method: "PUT", headers: { "content-type": "application/json" }, body: body(), keepalive: true });
+      void fetch(`/api/boards/${board.id}`, { method: "PUT", headers: { "content-type": "application/json" }, body: body(rev.current), keepalive: true });
       e.preventDefault();
     };
     window.addEventListener("beforeunload", onUnload);
     return () => window.removeEventListener("beforeunload", onUnload);
-  }, [board.id]);
+  }, [board.id, guest]);
 
   // -------------------------------------------------------------- mutation
   const mutate = useCallback((fn: (d: BoardContent) => void) => {
@@ -253,6 +285,7 @@ export function BoardEditor({ board }: { board: EditorBoard }) {
   async function startGame() {
     setStarting(true);
     await flush();
+    if (guest) return router.push("/login?next=/try/claim");
     const res = await fetch("/api/games", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ boardId: board.id }) });
     const data = await res.json().catch(() => ({}));
     setStarting(false);
@@ -275,39 +308,64 @@ export function BoardEditor({ board }: { board: EditorBoard }) {
           onChange={(e) => setMeta({ ...meta, title: e.target.value })}
           onBlur={() => !meta.title.trim() && setMeta({ ...meta, title: "Untitled board" })}
         />
-        <SaveBadge status={status} error={saveError} onRetry={() => void flush()} />
+        <SaveBadge status={status} error={saveError} onRetry={() => void flush()} guest={guest} />
       </div>
+      {conflict && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-red-500/60 bg-red-600/15 p-3 text-sm" role="alert">
+          <span className="min-w-0 flex-1">
+            <b>This board was changed somewhere else</b> (another tab, a co-host, or a typo fix made during a game). Your latest edits here are not saved yet.
+          </span>
+          <button className="btn-ghost !py-1.5" onClick={() => window.location.reload()}>Load the other version</button>
+          <button className="btn-primary !py-1.5" onClick={overwrite}>Keep mine</button>
+        </div>
+      )}
+      {guest && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-gold/50 bg-gold/10 p-3 text-sm">
+          <span className="min-w-0 flex-1">
+            <b>You are trying the builder without an account.</b> This board is saved in this browser only. Sign in to keep it, add images, and host a game with it.
+          </span>
+          <button className="btn-primary !py-1.5" onClick={startGame}>Sign in to save & host</button>
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <button className="btn-primary !py-2" onClick={startGame} disabled={starting}>
-          {starting ? "Starting…" : "▶ Play"}
+          {starting ? "Starting…" : guest ? "▶ Sign in to play" : "▶ Play"}
         </button>
-        <button
-          className="btn-ghost !py-2"
-          onClick={async () => {
-            await flush();
-            window.open(`/boards/${board.id}/preview`, "_blank");
-          }}
-        >
-          👁 Preview
-        </button>
+        {!guest && (
+          <button
+            className="btn-ghost !py-2"
+            onClick={async () => {
+              await flush();
+              window.open(`/boards/${board.id}/preview`, "_blank");
+            }}
+          >
+            👁 Preview
+          </button>
+        )}
         <button className="btn-ghost !py-2" onClick={() => setDialog("details")}>
           ✎ Details
         </button>
-        <button className="btn-ghost !py-2" onClick={() => setDialog("share")}>
-          🔗 Share
-        </button>
-        <button className="btn-ghost !py-2" onClick={() => setDialog("versions")}>
-          🕘 History
-        </button>
+        {!guest && (
+          <button className="btn-ghost !py-2" onClick={() => setDialog("share")}>
+            🔗 Share
+          </button>
+        )}
+        {!guest && (
+          <button className="btn-ghost !py-2" onClick={() => setDialog("versions")}>
+            🕘 History
+          </button>
+        )}
         {round && (
           <button className="btn-ghost !py-2" onClick={() => setDialog("bulk")}>
             📋 Bulk paste
           </button>
         )}
-        <a className="btn-ghost !py-2" href={`/api/boards/${board.id}/export`}>
-          ⬇ Export JSON
-        </a>
-        <ImportBoardButton className="btn-ghost !py-2" label="⬆ Import as new" />
+        {!guest && (
+          <a className="btn-ghost !py-2" href={`/api/boards/${board.id}/export`}>
+            ⬇ Export JSON
+          </a>
+        )}
+        {!guest && <ImportBoardButton className="btn-ghost !py-2" label="⬆ Import as new" />}
         <span className="ml-auto text-white/40">
           {filled}/{total} clues filled
         </span>
@@ -528,7 +586,7 @@ export function BoardEditor({ board }: { board: EditorBoard }) {
         <BulkPasteDialog round={round} onClose={() => setDialog(null)} onApply={(r) => mutate((d) => void (d.rounds[tab] = r))} />
       )}
       {dialog === "details" && <DetailsDialog meta={meta} onSave={setMeta} onClose={() => setDialog(null)} />}
-      {dialog === "share" && <ShareDialog boardId={board.id} initial={{ token: board.shareToken, mode: board.shareMode }} onClose={() => setDialog(null)} />}
+      {dialog === "share" && <ShareDialog boardId={board.id} initial={{ token: board.shareToken, mode: board.shareMode, listed: !!board.listed }} onClose={() => setDialog(null)} />}
       {dialog === "versions" && <VersionsDialog boardId={board.id} onClose={() => setDialog(null)} beforeRestore={flush} />}
 
       <div className="pt-4 text-sm">
@@ -540,7 +598,7 @@ export function BoardEditor({ board }: { board: EditorBoard }) {
   );
 }
 
-function SaveBadge({ status, error, onRetry }: { status: SaveStatus; error: string | null; onRetry: () => void }) {
+function SaveBadge({ status, error, onRetry, guest }: { status: SaveStatus; error: string | null; onRetry: () => void; guest?: boolean }) {
   if (status === "error")
     return (
       <button onClick={onRetry} className="rounded-full bg-red-600/20 px-3 py-1 text-sm text-red-300" title={error ?? ""}>
@@ -548,7 +606,7 @@ function SaveBadge({ status, error, onRetry }: { status: SaveStatus; error: stri
       </button>
     );
   const map: Record<Exclude<SaveStatus, "error">, [string, string]> = {
-    saved: ["✓ Saved", "text-green-400"],
+    saved: [guest ? "✓ Saved in this browser" : "✓ Saved", "text-green-400"],
     dirty: ["Editing…", "text-white/50"],
     saving: ["Saving…", "text-white/60"],
   };
