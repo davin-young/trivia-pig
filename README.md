@@ -170,6 +170,9 @@ All settings are environment variables. See [`.env.example`](.env.example).
   timeouts. Snippets are in the homelab README.
 - **Images:** GitHub Actions publishes `ghcr.io/<owner>/<repo>:latest` on every push to `main`.
 
+## License
+[MIT](LICENSE). Use it, change it, host it.
+
 ## Sound licenses
 Every sound effect and the ~30-second Final "think" music are **original**. They're generated at
 runtime by `src/client/sound.ts` with the Web Audio API (oscillators, filtered noise, a simple
