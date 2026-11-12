@@ -10,7 +10,7 @@ type Emit = ReturnType<typeof useGame>["emit"];
 export function MiniHostControl({ mini, emit }: { mini: MiniView | null; emit: Emit }) {
   const [err, setErr] = useState<string | null>(null);
   if (!mini) return null;
-  const send = async (payload: { kind?: LobbyGameKind; mix?: boolean; restart?: boolean; stop?: boolean }) => {
+  const send = async (payload: { kind?: LobbyGameKind; mix?: boolean; restart?: boolean; stop?: boolean; hide?: string }) => {
     const r = await emit("host:minigame", payload);
     setErr(r.ok ? null : r.error);
   };
@@ -28,6 +28,7 @@ export function MiniHostControl({ mini, emit }: { mini: MiniView | null; emit: E
         {LOBBY_GAMES.map((k) => (
           <button key={k} type="button" aria-pressed={mini.kind === k} className={`btn-ghost !py-2 ${mini.kind === k ? "!border-gold !text-gold" : ""}`} onClick={() => send({ kind: k })}>
             {LOBBY_GAME_INFO[k].emoji} {LOBBY_GAME_INFO[k].name}
+            {(LOBBY_GAME_INFO[k].min ?? 1) > 1 && <span className="ml-1 text-xs font-normal text-white/50">{LOBBY_GAME_INFO[k].min}+</span>}
           </button>
         ))}
       </div>
@@ -47,6 +48,19 @@ export function MiniHostControl({ mini, emit }: { mini: MiniView | null; emit: E
           Shuffle: a different game after each round
         </label>
       </div>
+      {(mini.round?.hideable?.length ?? 0) > 0 && (
+        <div className="flex flex-col gap-1 border-t border-line pt-2">
+          <div className="text-xs text-white/60">On the big screen now. Remove anything that should not be there:</div>
+          {mini.round!.hideable!.map((h) => (
+            <div key={h.key} className="flex items-center gap-2 text-sm">
+              <span className="min-w-0 flex-1 truncate">{h.label}</span>
+              <button type="button" className="btn-ghost !px-2 !py-1 text-xs" onClick={() => send({ hide: h.key })}>
+                ✕ Remove
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
       {err && <div className="text-sm text-red-300">{err}</div>}
     </div>
   );

@@ -38,12 +38,24 @@ own copy (see [Quick start](#quick-start-docker)). A public instance runs at <ht
   half-filled final round, and jumps to each one. Pressing Play with open items asks first.
 - **Phone-friendly builder.** On a phone the editor shows one category at a time with large fields.
 - **Party-game touches.**
-  - *Lobby games:* while the room waits, anyone can start a quick game from their phone and it
-    plays out on the big screen. There are five: Pig race (tap fastest), Quick draw (tap first
-    after GO), Stop the clock (stop a hidden clock at 7.00), Count the pigs, and Tug of war (two
-    sides). The host picks the game, shuffles them, restarts a round or stops it from the lobby
-    screen. They never affect the game, and the host can turn them off. Emoji reactions work in
-    the lobby too. Each game has its own sounds on the big screen (oinks, a GO horn, a win jingle).
+  - *Lobby games:* while the room waits, anyone can start a game from their phone and it plays out
+    on the big screen. The host picks the game, shuffles them, restarts a round or stops it from
+    the lobby screen, and can remove anything a player typed or drew. They never affect the trivia
+    game, live in memory only, and can be turned off. Sixteen so far:
+    - *Quick ones:* Pig race (tap fastest), Quick draw (tap first after GO), Stop the clock (stop
+      a hidden clock at 7.00), Count the pigs, Tug of war (two sides).
+    - *Against each other:* Hot potato (pass the mud bomb before it pops), Mud fight (throw, duck
+      or scoop each turn), Pig sumo (steer your pig and bump the others out of the ring).
+    - *Make something:* Doodle guess (one draws a secret word, the rest guess), Doodle chain (take
+      turns on one drawing, then vote on a title), Caption vote (answer a silly prompt, vote for
+      the best).
+    - *Read the room:* Most likely to (vote for a player), Closest guess (a number question),
+      Split the room (pick the side you think most people will pick).
+    - *Skill:* Copy the pattern (repeat a growing run of colours), Pig maze (tilt the phone or use
+      arrows to reach the corn first).
+
+    Typed answers go through the same word filter as names. Each game has its own sounds on the
+    big screen. Emoji reactions work in the lobby too.
   - *Everybody's in (off by default):* the host starts the game. Turn this on in Settings and
     the first player to join gets a crown and can start it from their phone, so a casual night
     needs no host device.
