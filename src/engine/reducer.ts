@@ -2,6 +2,8 @@ import { findClue, isPlayable } from "@/shared/board";
 import type { BoardContent } from "@/shared/board";
 import {
   DEFAULT_SETTINGS,
+  HARD_MAX_AUDIENCE,
+  HARD_MAX_PLAYERS,
   type ActiveClue,
   type GameState,
   type LogEntry,
@@ -67,6 +69,17 @@ export function initialState(setup: Setup): GameState {
 // helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * Own-property lookup. Ids arrive from clients and from saved logs, so "__proto__" or
+ * "constructor" must never resolve to something on Object.prototype.
+ */
+export function own<T>(rec: Record<string, T>, key: string): T | undefined {
+  return Object.hasOwn(rec, key) ? rec[key] : undefined;
+}
+
+/** Ids that would reach the prototype if used as a key. */
+export const UNSAFE_IDS: ReadonlySet<string> = new Set(["__proto__", "constructor", "prototype"]);
+
 export function normName(name: string): string {
   return name.trim().toLowerCase().replace(/\s+/g, " ");
 }
@@ -94,7 +107,7 @@ export function scaled(s: GameState, ms: number): number {
 
 /** The id that scores attach to: the player in solo mode, their team in team mode. */
 export function contestantOf(s: GameState, playerId: string): string | null {
-  const p = s.players[playerId];
+  const p = own(s.players, playerId);
   if (!p || p.removed || p.audience) return null;
   if (s.settings.mode === "team") return p.teamId && s.teams.some((t) => t.id === p.teamId) ? p.teamId : null;
   return p.id;
@@ -110,7 +123,7 @@ export function isContestant(s: GameState, id: string): boolean {
 }
 
 export function scoreOf(s: GameState, contestantId: string): number {
-  return s.scores[contestantId] ?? 0;
+  return own(s.scores, contestantId) ?? 0;
 }
 
 export function roundMaxValue(board: BoardContent, roundIndex: number): number {
@@ -189,7 +202,8 @@ function reduce(s: GameState, entry: LogEntry, fx: Cue[]): boolean {
   switch (a.type) {
     // -------------------------------------------------------------- players
     case "player/join": {
-      const existing = s.players[a.playerId];
+      if (UNSAFE_IDS.has(a.playerId)) return false;
+      const existing = own(s.players, a.playerId);
       if (existing) {
         if (existing.banned) return false;
         existing.removed = false;
@@ -203,7 +217,7 @@ function reduce(s: GameState, entry: LogEntry, fx: Cue[]): boolean {
       if (a.audience) {
         // The audience can always get in, even when the room is locked or full.
         if (!s.settings.audience) return false;
-        if (s.settings.maxAudience > 0 && audienceMembers(s).length >= s.settings.maxAudience) return false;
+        if (audienceMembers(s).length >= (s.settings.maxAudience || HARD_MAX_AUDIENCE)) return false;
         s.players[a.playerId] = {
           id: a.playerId,
           name: a.name,
@@ -221,7 +235,7 @@ function reduce(s: GameState, entry: LogEntry, fx: Cue[]): boolean {
       }
       if (s.lobbyLocked) return false;
       if (s.phase !== "lobby" && !s.settings.allowLateJoin) return false;
-      if (s.settings.maxPlayers > 0 && activePlayers(s).length >= s.settings.maxPlayers) return false;
+      if (activePlayers(s).length >= (s.settings.maxPlayers || HARD_MAX_PLAYERS)) return false;
       const teamId = a.teamId && s.teams.some((t) => t.id === a.teamId) ? a.teamId : null;
       s.players[a.playerId] = {
         id: a.playerId,
@@ -238,12 +252,12 @@ function reduce(s: GameState, entry: LogEntry, fx: Cue[]): boolean {
         ...(a.bot ? { bot: true } : {}),
       };
       s.playerOrder.push(a.playerId);
-      if (s.scores[a.playerId] === undefined) s.scores[a.playerId] = 0;
+      if (own(s.scores, a.playerId) === undefined) s.scores[a.playerId] = 0;
       fx.push({ cue: "join", playerId: a.playerId });
       return true;
     }
     case "player/signature": {
-      const p = s.players[a.playerId];
+      const p = own(s.players, a.playerId);
       if (!p || p.removed || p.audience) return false;
       p.signature = a.signature;
       if (a.avatar !== undefined) p.avatar = a.avatar;
@@ -251,14 +265,14 @@ function reduce(s: GameState, entry: LogEntry, fx: Cue[]): boolean {
       return true;
     }
     case "player/cheer": {
-      const p = s.players[a.playerId];
+      const p = own(s.players, a.playerId);
       if (!p || p.removed || !p.audience) return false;
       if (a.contestantId === null) {
-        if (!s.audiencePicks[a.playerId]) return false;
+        if (!own(s.audiencePicks, a.playerId)) return false;
         delete s.audiencePicks[a.playerId];
         return true;
       }
-      if (!isContestant(s, a.contestantId) || s.audiencePicks[a.playerId] === a.contestantId) return false;
+      if (!isContestant(s, a.contestantId) || own(s.audiencePicks, a.playerId) === a.contestantId) return false;
       s.audiencePicks[a.playerId] = a.contestantId;
       return true;
     }
@@ -276,7 +290,7 @@ function reduce(s: GameState, entry: LogEntry, fx: Cue[]): boolean {
         return false;
       }
       if (c.stage !== "open" && c.stage !== "answering") return false;
-      if ((c.lockouts[a.playerId] ?? 0) > at) return false;
+      if ((own(c.lockouts, a.playerId) ?? 0) > at) return false;
       if (!s.settings.allowRebuzz && c.attempted.includes(contestant)) return false;
       if (c.buzzes.some((b) => b.playerId === a.playerId)) return false;
       c.buzzes.push({ playerId: a.playerId, at });
@@ -344,26 +358,26 @@ function reduce(s: GameState, entry: LogEntry, fx: Cue[]): boolean {
       s.lobbyLocked = a.locked;
       return true;
     case "player/rename": {
-      const p = s.players[a.playerId];
+      const p = own(s.players, a.playerId);
       if (!p || !a.name.trim()) return false;
       p.name = a.name.trim();
       return true;
     }
     case "player/resetSignature": {
-      const p = s.players[a.playerId];
+      const p = own(s.players, a.playerId);
       if (!p) return false;
       p.signature = null;
       return true;
     }
     case "player/hideSignature": {
-      const p = s.players[a.playerId];
+      const p = own(s.players, a.playerId);
       if (!p) return false;
       p.signatureHidden = a.hidden;
       return true;
     }
     case "player/kick":
     case "player/ban": {
-      const p = s.players[a.playerId];
+      const p = own(s.players, a.playerId);
       if (!p) return false;
       p.removed = true;
       delete s.audiencePicks[a.playerId];
@@ -381,7 +395,7 @@ function reduce(s: GameState, entry: LogEntry, fx: Cue[]): boolean {
       return true;
     }
     case "player/restore": {
-      const p = s.players[a.playerId];
+      const p = own(s.players, a.playerId);
       if (!p) return false;
       p.removed = false;
       p.banned = false;
@@ -389,10 +403,10 @@ function reduce(s: GameState, entry: LogEntry, fx: Cue[]): boolean {
       return true;
     }
     case "team/create": {
-      if (s.teams.some((t) => t.id === a.teamId)) return false;
+      if (UNSAFE_IDS.has(a.teamId) || s.teams.some((t) => t.id === a.teamId)) return false;
       if (s.settings.maxTeams > 0 && s.teams.length >= s.settings.maxTeams) return false;
       s.teams.push({ id: a.teamId, name: a.name, color: a.color });
-      if (s.scores[a.teamId] === undefined) s.scores[a.teamId] = 0;
+      if (own(s.scores, a.teamId) === undefined) s.scores[a.teamId] = 0;
       return true;
     }
     case "team/rename": {
@@ -409,7 +423,7 @@ function reduce(s: GameState, entry: LogEntry, fx: Cue[]): boolean {
       return true;
     }
     case "team/assign": {
-      const p = s.players[a.playerId];
+      const p = own(s.players, a.playerId);
       if (!p) return false;
       if (a.teamId !== null && !s.teams.some((t) => t.id === a.teamId)) return false;
       p.teamId = a.teamId;
@@ -417,7 +431,7 @@ function reduce(s: GameState, entry: LogEntry, fx: Cue[]): boolean {
     }
     case "team/autoBalance": {
       for (const [pid, tid] of Object.entries(a.assignments)) {
-        const p = s.players[pid];
+        const p = own(s.players, pid);
         if (p && s.teams.some((t) => t.id === tid)) p.teamId = tid;
       }
       return true;
@@ -515,7 +529,7 @@ function reduce(s: GameState, entry: LogEntry, fx: Cue[]): boolean {
       const ap = c?.allPlay;
       if (s.phase !== "clue" || !c || !ap || ap.stage !== "judging") return false;
       if (!isContestant(s, a.contestantId)) return false;
-      const prev = ap.judged[a.contestantId];
+      const prev = own(ap.judged, a.contestantId);
       if (prev === a.correct) return false;
       // Right answers earn the clue value; wrong answers cost nothing on an all-play.
       if (a.correct) addScore(s, entry, a.contestantId, c.value, "correct", c.id);
@@ -634,12 +648,12 @@ function reduce(s: GameState, entry: LogEntry, fx: Cue[]): boolean {
     }
     case "score/adjust": {
       if (!Number.isFinite(a.delta) || a.delta === 0) return false;
-      if (!isContestant(s, a.contestantId) && s.scores[a.contestantId] === undefined) return false;
+      if (!isContestant(s, a.contestantId) && own(s.scores, a.contestantId) === undefined) return false;
       addScore(s, entry, a.contestantId, a.delta, "adjust", null);
       return true;
     }
     case "score/set": {
-      if (!isContestant(s, a.contestantId) && s.scores[a.contestantId] === undefined) return false;
+      if (!isContestant(s, a.contestantId) && own(s.scores, a.contestantId) === undefined) return false;
       const delta = a.score - scoreOf(s, a.contestantId);
       if (delta === 0) return false;
       addScore(s, entry, a.contestantId, delta, "adjust", null);
@@ -716,13 +730,13 @@ function reduce(s: GameState, entry: LogEntry, fx: Cue[]): boolean {
       if (!f || (f.stage !== "closed" && f.stage !== "reveal") || !f.eligible.includes(a.contestantId)) return false;
       f.stage = "reveal";
       f.current = a.contestantId;
-      f.revealed[a.contestantId] = { ...(f.revealed[a.contestantId] ?? { judged: null, wager: false }), answer: true };
+      f.revealed[a.contestantId] = { ...(own(f.revealed, a.contestantId) ?? { judged: null, wager: false }), answer: true };
       fx.push({ cue: "finalReveal" });
       return true;
     }
     case "final/judge": {
       const f = s.final;
-      const r = f?.revealed[a.contestantId];
+      const r = f && own(f.revealed, a.contestantId);
       if (!f || f.stage !== "reveal" || !r?.answer || r.wager) return false;
       r.judged = a.correct;
       fx.push({ cue: a.correct ? "correct" : "incorrect" });
@@ -730,9 +744,9 @@ function reduce(s: GameState, entry: LogEntry, fx: Cue[]): boolean {
     }
     case "final/showWager": {
       const f = s.final;
-      const r = f?.revealed[a.contestantId];
+      const r = f && own(f.revealed, a.contestantId);
       if (!f || f.stage !== "reveal" || !r || r.judged === null || r.wager) return false;
-      const wager = f.wagers[a.contestantId] ?? 0;
+      const wager = own(f.wagers, a.contestantId) ?? 0;
       r.wager = true;
       addScore(s, entry, a.contestantId, r.judged ? wager : -wager, r.judged ? "final-correct" : "final-incorrect", null);
       fx.push({ cue: "finalWager" });

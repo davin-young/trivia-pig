@@ -82,7 +82,7 @@ async function main() {
     const login = await fetch(`${BASE}/api/auth/login`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email: "demo@example.com", password: "demo1234" }),
+      body: JSON.stringify({ email: process.env.SEED_EMAIL ?? "demo@example.com", password: process.env.SEED_PASSWORD ?? "demo1234" }),
     });
     assert(login.ok, "host signs in");
     const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0];

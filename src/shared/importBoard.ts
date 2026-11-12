@@ -60,6 +60,9 @@ function toValue(s: string): number | null {
 
 const truthy = (s: string | undefined) => !!s && /^(1|y|yes|true|x|dd)$/i.test(s.trim());
 
+const MAX_GRID = 12; // same as the board schema: 12 categories, 12 values
+const MAX_IMPORT_ROWS = 2000;
+
 interface Row {
   category: string;
   value: number | null;
@@ -70,17 +73,21 @@ interface Row {
 
 /** Build a round from rows of category/value/clue/answer. Categories keep first-seen order. */
 function roundFromRows(rows: Row[], base: Pick<Round, "kind" | "name"> & { id?: string }): Round {
+  // A round holds at most MAX_GRID categories of MAX_GRID clues. The limits are applied while
+  // reading, so a huge paste cannot make this build a grid of millions of empty clues.
   const catOrder: string[] = [];
   const byCat = new Map<string, Row[]>();
-  for (const r of rows) {
+  for (const r of rows.slice(0, MAX_IMPORT_ROWS)) {
     if (!byCat.has(r.category)) {
+      if (catOrder.length >= MAX_GRID) continue;
       byCat.set(r.category, []);
       catOrder.push(r.category);
     }
     byCat.get(r.category)!.push(r);
   }
-  const explicit = [...new Set(rows.map((r) => r.value).filter((v): v is number => v !== null))].sort((a, b) => a - b);
-  const maxPerCat = Math.max(1, ...[...byCat.values()].map((rs) => rs.length));
+  const kept = [...byCat.values()].flat();
+  const explicit = [...new Set(kept.map((r) => r.value).filter((v): v is number => v !== null))].sort((a, b) => a - b).slice(0, MAX_GRID);
+  const maxPerCat = Math.min(MAX_GRID, Math.max(1, ...[...byCat.values()].map((rs) => rs.length)));
   const step = base.kind === "double" ? 200 : 100;
   const values = explicit.length >= maxPerCat ? explicit : Array.from({ length: maxPerCat }, (_, i) => explicit[i] ?? (i + 1) * step);
   const categories: Category[] = catOrder.map((name) => {

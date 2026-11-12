@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { emailIsVerified, packPending, rolesFromClaims, unpackPending } from "./oidc";
+import { adminAfterLogin, emailIsVerified, packPending, rolesFromClaims, unpackPending } from "./oidc";
 
 describe("keycloak role mapping", () => {
   it("merges realm roles, client roles, and groups", () => {
@@ -33,11 +33,21 @@ describe("login state cookie", () => {
   });
 });
 
-describe("email trust", () => {
-  it("only an explicit email_verified: true counts", () => {
+describe("account rules on SSO sign-in", () => {
+  it("treats an email as verified only when the provider says so", () => {
     expect(emailIsVerified({ email: "a@b.c", email_verified: true })).toBe(true);
-    expect(emailIsVerified({ email: "a@b.c", email_verified: false })).toBe(false);
     expect(emailIsVerified({ email: "a@b.c" })).toBe(false);
+    expect(emailIsVerified({ email: "a@b.c", email_verified: false })).toBe(false);
     expect(emailIsVerified({ email: "a@b.c", email_verified: "true" })).toBe(false);
+    expect(emailIsVerified({ email_verified: true })).toBe(false);
+  });
+  it("syncs admin up, and down only when the admin role was set on purpose", () => {
+    const base = { isAdmin: false, hasRole: false, listed: false, roleSet: true };
+    expect(adminAfterLogin({ ...base, hasRole: true })).toBe(true);
+    expect(adminAfterLogin({ ...base, listed: true })).toBe(true);
+    expect(adminAfterLogin({ ...base, isAdmin: true })).toBe(false);
+    expect(adminAfterLogin({ ...base, isAdmin: true, listed: true })).toBe(true);
+    expect(adminAfterLogin({ ...base, isAdmin: true, roleSet: false })).toBe(true);
+    expect(adminAfterLogin({ ...base, roleSet: false })).toBe(false);
   });
 });

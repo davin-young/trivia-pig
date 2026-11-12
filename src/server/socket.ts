@@ -3,7 +3,7 @@ import type { Server, Socket } from "socket.io";
 import { nanoid } from "nanoid";
 import { clientEvents, hostIntentSchema, SCOREKEEPER_INTENTS, type Ack, type ClientEvent } from "@/shared/protocol";
 import { containsProfanity, cleanName } from "./profanity";
-import { TokenBucket } from "./rateLimit";
+import { TokenBucket, hit } from "./rateLimit";
 import { RttTracker } from "./buzzQueue";
 import { authorizeSocket, SocketAuthError, type SocketAuthDeps } from "./socketAuth";
 import { getManager, type GameSocket, type LiveGame } from "./live";
@@ -13,7 +13,7 @@ import { userFromSessionToken } from "./auth";
 import { hostRoleFor } from "./access";
 import { pairing } from "./pairingStore";
 import { compactDrawing } from "@/shared/strokes";
-import { vipOf } from "@/engine/reducer";
+import { own, vipOf } from "@/engine/reducer";
 
 export const prismaSocketAuthDeps: SocketAuthDeps = {
   async findGame(code) {
@@ -32,7 +32,35 @@ export const prismaSocketAuthDeps: SocketAuthDeps = {
     const p = await prisma.gamePlayer.findFirst({ where: { gameId, tokenHash } });
     return p?.playerId ?? null;
   },
+  async spectatorsAllowed(gameId) {
+    const manager = getManager();
+    const game = await manager.load(gameId);
+    if (!game) return true; // the connection handler reports the missing game
+    // Loaded only to answer this: let it go again if nobody ends up connecting.
+    if (game.sockets.size === 0) manager.scheduleEvict(game);
+    return game.state.settings.spectators;
+  },
 };
+
+/** Most sockets one address may hold at once. Generous, because a whole venue often shares one public address. */
+export const MAX_SOCKETS_PER_IP = 250;
+/** Handshakes one address may start per minute: room for a full venue reconnecting more than once after a restart. */
+export const HANDSHAKES_PER_MIN = 600;
+const socketsByIp = new Map<string, number>();
+
+/**
+ * Client address for per-address limits. Forwarding headers count only behind a trusted proxy
+ * (TRUST_PROXY=true): Cloudflare's header first, else the right-most X-Forwarded-For hop (the one
+ * our proxy added). Otherwise it is the address the connection came from.
+ */
+export function socketIp(headers: Record<string, string | string[] | undefined>, address: string | undefined): string {
+  if (process.env.TRUST_PROXY === "true") {
+    const header = (name: string) => [headers[name]].flat().join(",");
+    const forwarded = header("cf-connecting-ip").trim() || header("x-forwarded-for").split(",").pop()?.trim();
+    if (forwarded) return forwarded;
+  }
+  return address || "unknown";
+}
 
 type Handler = (game: LiveGame, socket: GameSocket, payload: never) => Promise<Ack> | Ack;
 
@@ -52,6 +80,10 @@ export function attachSocketServer(io: Server, deps: SocketAuthDeps = prismaSock
   manager.io = io;
 
   io.use(async (socket, next) => {
+    const ip = socketIp(socket.handshake.headers, socket.handshake.address);
+    if (!hit(`ws:${ip}`, HANDSHAKES_PER_MIN, 60_000) || (socketsByIp.get(ip) ?? 0) >= MAX_SOCKETS_PER_IP) {
+      return next(new Error("Too many connections from this network. Try again in a minute."));
+    }
     try {
       const id = await authorizeSocket(socket.handshake.auth, socket.handshake.headers.cookie, deps);
       socket.data = {
@@ -72,6 +104,8 @@ export function attachSocketServer(io: Server, deps: SocketAuthDeps = prismaSock
 
   io.on("connection", (raw: Socket) => {
     const socket = raw as unknown as GameSocket;
+    const ip = socketIp(raw.handshake.headers, raw.handshake.address);
+    socketsByIp.set(ip, (socketsByIp.get(ip) ?? 0) + 1);
     // Register listeners synchronously so messages sent immediately after
     // connecting aren't dropped while the game loads from the database.
     const gameP = manager
@@ -136,6 +170,9 @@ export function attachSocketServer(io: Server, deps: SocketAuthDeps = prismaSock
     }
 
     raw.on("disconnect", () => {
+      const left = (socketsByIp.get(ip) ?? 1) - 1;
+      if (left > 0) socketsByIp.set(ip, left);
+      else socketsByIp.delete(ip);
       if (rttTimer) clearInterval(rttTimer);
       void gameP.then((game) => game?.detach(socket));
     });
@@ -201,7 +238,10 @@ function drawingThrottle(socket: GameSocket): boolean {
   return true;
 }
 
-const playerHandlers: Partial<Record<ClientEvent, Handler>> = {
+const TOO_MANY_CHANGES = "You've changed your name or drawing too many times in this game";
+
+/** Exported for tests. */
+export const playerHandlers: Partial<Record<ClientEvent, Handler>> = {
   "player:join": async (
     game,
     socket,
@@ -215,9 +255,18 @@ const playerHandlers: Partial<Record<ClientEvent, Handler>> = {
 
     // Rejoin with an existing token keeps the same seat and score.
     const existing = socket.data.playerId;
-    if (existing && game.state.players[existing]) {
-      const res = game.dispatch({ type: "player/join", playerId: existing, name, signature, avatar }, `player:${existing}`);
-      if (!res.ok) return { ok: false, error: "You can't rejoin this game" };
+    const seat = existing ? own(game.state.players, existing) : undefined;
+    if (seat?.banned) return { ok: false, error: "You can't rejoin this game" };
+    // A removed player's old token does not undo the removal: they come back as a new player
+    // (below), if the lobby still lets people in. The host can restore the old seat.
+    if (existing && seat && !seat.removed) {
+      // Only a real change goes in the log, and it is rationed like any other redraw.
+      if (name !== seat.name || signature || avatar) {
+        if (!game.canChangeProfile(existing)) return { ok: false, error: TOO_MANY_CHANGES };
+        if (!drawingThrottle(socket)) return { ok: false, error: "Slow down" };
+        const res = game.dispatch({ type: "player/join", playerId: existing, name, signature, avatar }, `player:${existing}`);
+        if (!res.ok) return { ok: false, error: "You can't rejoin this game" };
+      }
       game.bindPlayer(socket, existing);
       return { ok: true, data: { playerId: existing } };
     }
@@ -247,6 +296,7 @@ const playerHandlers: Partial<Record<ClientEvent, Handler>> = {
   "player:signature": (game, socket, payload: { signature: import("@/shared/strokes").Drawing | null; avatar?: import("@/shared/strokes").Drawing | null }) => {
     const pid = socket.data.playerId;
     if (!pid) return { ok: false, error: "Join first" };
+    if (!game.canChangeProfile(pid)) return { ok: false, error: TOO_MANY_CHANGES };
     if (!drawingThrottle(socket)) return { ok: false, error: "Slow down" };
     const avatar = payload.avatar === undefined || !game.state.settings.avatars ? undefined : payload.avatar ? compactDrawing(payload.avatar) : null;
     const res = game.dispatch(
@@ -272,7 +322,11 @@ const playerHandlers: Partial<Record<ClientEvent, Handler>> = {
   "player:seats": (game) => ({ ok: true, data: { seats: game.state.settings.reclaimSeats ? game.emptySeats() : [] } }),
   "player:reclaim": async (game, socket, payload: { playerId: string }) => {
     if (!game.state.settings.reclaimSeats) return { ok: false, error: "The host turned this off. Ask them to let you back in." };
-    // Only a seat nobody is sitting in can be taken, so a live player can never be bumped.
+    // A phone that already has a seat, or was removed or banned from one, cannot take another.
+    const bound = socket.data.playerId;
+    if (bound && own(game.state.players, bound)) return { ok: false, error: "You already have a seat in this game." };
+    // Only a seat whose phone has been gone a while can be taken, so a live player (or one
+    // whose connection only just blipped) can never be bumped.
     if (!game.emptySeats().some((seat) => seat.id === payload.playerId)) return { ok: false, error: "That seat is in use. Pick another or join as a new player." };
     const token = randomToken();
     const where = { gameId_playerId: { gameId: game.id, playerId: payload.playerId } };
@@ -300,6 +354,7 @@ const playerHandlers: Partial<Record<ClientEvent, Handler>> = {
     const pid = socket.data.playerId;
     if (!pid) return { ok: false, error: "Join first" };
     if (!drawingThrottle(socket)) return { ok: false, error: "Slow down" };
+    if (!game.canSubmitAnswer(pid)) return { ok: false, error: "Too many answers" };
     const res = game.dispatch(
       { type: "player/finalAnswer", playerId: pid, drawing: payload.drawing ? compactDrawing(payload.drawing) : null, typed: payload.typed },
       `player:${pid}`,
@@ -310,6 +365,7 @@ const playerHandlers: Partial<Record<ClientEvent, Handler>> = {
     const pid = socket.data.playerId;
     if (!pid) return { ok: false, error: "Join first" };
     if (!drawingThrottle(socket)) return { ok: false, error: "Slow down" };
+    if (!game.canSubmitAnswer(pid)) return { ok: false, error: "Too many answers" };
     const res = game.dispatch(
       { type: "player/allPlayAnswer", playerId: pid, drawing: payload.drawing ? compactDrawing(payload.drawing) : null, typed: payload.typed },
       `player:${pid}`,

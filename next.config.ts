@@ -1,5 +1,27 @@
 import type { NextConfig } from "next";
 
+// Content-Security-Policy. Scripts, styles, fonts and sockets come only from this site; clue
+// images, audio and video may be any https URL (hosts paste links); the only frame is YouTube.
+// Next.js needs inline scripts and React needs inline styles, so those stay allowed: the policy
+// still stops injected markup from loading outside scripts, posting forms elsewhere, changing
+// the base URL, or framing the site.
+const dev = process.env.NODE_ENV !== "production";
+const csp = [
+  "default-src 'self'",
+  `script-src 'self' 'unsafe-inline'${dev ? " 'unsafe-eval'" : ""}`,
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob: https:",
+  "media-src 'self' data: blob: https:",
+  "font-src 'self' data:",
+  "connect-src 'self' ws: wss:",
+  "frame-src https://www.youtube-nocookie.com",
+  "worker-src 'self' blob:",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'self'",
+].join("; ");
+
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
@@ -9,6 +31,7 @@ const nextConfig: NextConfig = {
       {
         source: "/:path*",
         headers: [
+          { key: "Content-Security-Policy", value: csp },
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "X-Frame-Options", value: "SAMEORIGIN" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },

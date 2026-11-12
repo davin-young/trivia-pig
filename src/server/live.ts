@@ -25,6 +25,10 @@ export interface SocketData {
 export type GameSocket = Socket<Record<string, never>, Record<string, never>, Record<string, never>, SocketData>;
 
 const RECONNECT_GRACE_MS = 20_000;
+/** Name and drawing entries one player may add to a game's log (the first join counts). */
+export const MAX_PROFILE_CHANGES = 20;
+/** Written answers one player may add to a game's log; far more than any real game needs. */
+export const MAX_ANSWER_ENTRIES = 300;
 const BOT_GUESSES = ["What is... 42?", "Who is Beep Boop?", "What is electricity?", "I was told there would be no math", "What is a toaster?", "Who is my creator?"];
 const NOBODY_RETURN_MS = 4_000;
 
@@ -52,6 +56,8 @@ export class LiveGame {
   lastActivity = gameNow();
   private saveFailures = 0;
   private pendingBuzzes: PendingBuzz<(ok: boolean) => void>[] = [];
+  /** Stands in for "last seen" for players who have not connected since this process loaded the game. */
+  private loadedAt = gameNow();
   private buzzTimer: NodeJS.Timeout | null = null;
 
   constructor(
@@ -126,6 +132,7 @@ export class LiveGame {
     if (action) this.scheduleAutomation(action);
     this.syncTimers();
     if (action?.type === "player/kick" || action?.type === "player/ban") this.kickSockets(action.playerId, action.type);
+    if (action?.type === "settings/update" && !this.state.settings.spectators) this.dropSpectators();
   }
 
   /** Server-driven follow-ups: "nobody got it" returns to the board; Final closes when time's up. */
@@ -201,12 +208,24 @@ export class LiveGame {
     return this.startNow(by);
   }
 
-  /** Seats whose player has no phone connected right now (for "that's me" on the join screen). */
-  emptySeats(): { id: string; name: string }[] {
+  /**
+   * Seats whose phone has been gone for longer than the reconnect grace (for "that's me" on
+   * the join screen). A seat that only just dropped is still its owner's to come back to.
+   */
+  emptySeats(now = gameNow()): { id: string; name: string }[] {
     const online = new Set([...this.sockets.values()].map((s) => s.data.playerId).filter(Boolean));
     return activePlayers(this.state)
-      .filter((p) => !p.bot && !online.has(p.id))
+      .filter((p) => !p.bot && !online.has(p.id) && now - (this.playerLastSeen.get(p.id) ?? this.loadedAt) >= RECONNECT_GRACE_MS)
       .map((p) => ({ id: p.id, name: p.name }));
+  }
+
+  /** False once a player has used up their name and drawing changes, so one phone cannot grow the log without end. */
+  canChangeProfile(playerId: string): boolean {
+    let n = 0;
+    for (const e of this.history.log) {
+      if ((e.action.type === "player/join" || e.action.type === "player/signature") && e.action.playerId === playerId) n++;
+    }
+    return n < MAX_PROFILE_CHANGES;
   }
 
   private cancel(key: string) {
@@ -430,6 +449,20 @@ export class LiveGame {
         socket.disconnect(true);
       }
     }
+  }
+
+  /** False once a player has sent an unreasonable number of written answers (each one is logged). */
+  canSubmitAnswer(playerId: string): boolean {
+    let n = 0;
+    for (const e of this.history.log) {
+      if ((e.action.type === "player/finalAnswer" || e.action.type === "player/allPlayAnswer") && e.action.playerId === playerId) n++;
+    }
+    return n < MAX_ANSWER_ENTRIES;
+  }
+
+  /** Watching was switched off: the watch link and overlays stop receiving the game. */
+  private dropSpectators() {
+    for (const socket of this.sockets.values()) if (socket.data.role === "display" && socket.data.spectator) socket.disconnect(true);
   }
 
   redirectAll(newCode: string) {

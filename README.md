@@ -139,7 +139,8 @@ and live games. Details: [`deploy/homelab/README.md`](deploy/homelab/README.md#r
 ```bash
 docker compose up --build        # app + Postgres at http://localhost:3000
 ```
-`SEED_DEMO=true` creates **demo@example.com / demo1234** with the "Kava & Kratom" board.
+`SEED_DEMO=true` creates **demo@example.com** with the "Kava & Kratom" board. Its password is
+random and printed once, on the first start: `docker compose logs app | grep Seeded`.
 
 The compose file holds no passwords: the first start generates a random database password and
 `AUTH_SECRET` and keeps them in the `secrets` volume. If you used the quick start before this
@@ -177,8 +178,9 @@ All settings are environment variables. See [`.env.example`](.env.example).
 | `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` | Keycloak sign-in (empty disables it) |
 | `OIDC_ADMIN_ROLE` / `OIDC_REQUIRED_ROLE` | Role that grants super-admin / role required to sign in |
 | `LOCAL_AUTH` | `false` makes Keycloak the only sign-in method |
-| `ALLOW_SIGNUP`, `ADMIN_EMAILS` | Local accounts. The first account is always admin |
-| `SMTP_URL`, `MAIL_FROM` | Magic links and invites. Without SMTP, links are printed to the log |
+| `ALLOW_SIGNUP`, `ADMIN_EMAILS` | Local accounts. The first account is always admin. `ADMIN_EMAILS` applies to emails proven by a magic link or verified by Keycloak, not to password sign-up |
+| `TRUST_PROXY` | Set `true` when the app sits behind Cloudflare or a reverse proxy (the homelab stack does): client addresses for rate limits then come from `CF-Connecting-IP` / `X-Forwarded-For`. Default `false`: those headers are ignored and the connection's own address is used |
+| `SMTP_URL`, `MAIL_FROM` | Magic links and invites. Without SMTP, links are printed to the log (`MAGIC_LINK_DEV=true` also shows them on the sign-in page, development only) |
 | `ANTHROPIC_API_KEY` | Optional. Enables "Draft with AI" (`ANTHROPIC_MODEL`, `AI_DRAFTS_PER_HOUR` tune it) |
 | `STORAGE_DRIVER` | `local` (`UPLOAD_DIR`) or `s3` (`S3_ENDPOINT`, `S3_BUCKET`, keys, `S3_FORCE_PATH_STYLE`) |
 

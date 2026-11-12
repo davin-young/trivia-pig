@@ -23,8 +23,9 @@ if [ ! -w "$UPLOAD_DIR" ] && [ "${STORAGE_DRIVER:-local}" = "local" ]; then
 fi
 
 # Secrets can be handed over as files (Docker secrets, or the quick-start compose file's
-# generated ones): AUTH_SECRET_FILE and DATABASE_URL_FILE. A value set directly wins.
-for var in AUTH_SECRET DATABASE_URL; do
+# generated ones): AUTH_SECRET_FILE, DATABASE_URL_FILE and S3_SECRET_ACCESS_KEY_FILE. A value set
+# directly wins.
+for var in AUTH_SECRET DATABASE_URL S3_SECRET_ACCESS_KEY; do
   eval "current=\${$var:-}"
   eval "file=\${${var}_FILE:-}"
   if [ -z "$current" ] && [ -n "$file" ]; then

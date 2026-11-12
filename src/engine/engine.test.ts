@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { makeRound, type BoardContent } from "@/shared/board";
 import { GameHistory } from "./history";
 import { resolveDailyDoubles } from "./reducer";
-import { DEFAULT_SETTINGS, type GameAction, type Settings } from "./types";
+import { DEFAULT_SETTINGS, HARD_MAX_AUDIENCE, HARD_MAX_PLAYERS, type GameAction, type LogEntry, type Settings } from "./types";
 import { buildView } from "./views";
 
 function board(): BoardContent {
@@ -361,3 +361,99 @@ describe("lobby & players", () => {
     expect(ctx.player({ type: "player/join", playerId: "e", name: "Eve", signature: null }).ok).toBe(false);
   });
 });
+
+describe("ids that name Object.prototype members", () => {
+  const BAD = ["__proto__", "constructor", "prototype", "toString"];
+  const clean = () => {
+    const proto = Object.prototype as Record<string, unknown>;
+    const ctor = Object as unknown as Record<string, unknown>;
+    return ["name", "removed", "banned", "signature", "signatureHidden", "teamId", "wager", "judged", "answer"].every((k) => !(k in proto) && (k === "name" || !(k in ctor)));
+  };
+
+  it("are rejected by every action that looks a player, score or team up by id", () => {
+    const { g, host, player, clue } = withPlayers({ mode: "solo" });
+    host({ type: "team/create", teamId: "t1", name: "Red", color: "#f00" });
+    for (const id of BAD) {
+      const actions: GameAction[] = [
+        { type: "player/rename", playerId: id, name: "x" },
+        { type: "player/hideSignature", playerId: id, hidden: true },
+        { type: "player/resetSignature", playerId: id },
+        { type: "player/kick", playerId: id },
+        { type: "player/ban", playerId: id },
+        { type: "player/restore", playerId: id },
+        { type: "team/assign", playerId: id, teamId: "t1" },
+        { type: "team/autoBalance", assignments: { [id]: "t1" } },
+        { type: "player/signature", playerId: id, signature: null },
+        { type: "player/cheer", playerId: id, contestantId: "a" },
+        { type: "player/buzz", playerId: id },
+        { type: "score/adjust", contestantId: id, delta: 5 },
+        { type: "score/set", contestantId: id, score: 5 },
+        { type: "control/set", contestantId: id },
+      ];
+      for (const action of actions) {
+        const res = action.type.startsWith("player/") && !["player/rename", "player/hideSignature", "player/resetSignature", "player/kick", "player/ban", "player/restore"].includes(action.type) ? player(action) : host(action);
+        // autoBalance succeeds as a whole; it just skips the id.
+        if (action.type !== "team/autoBalance") expect(res.ok, `${action.type} ${id}`).toBe(false);
+      }
+    }
+    expect(player({ type: "player/join", playerId: "__proto__", name: "Eve", signature: null }).ok).toBe(false);
+    expect(host({ type: "team/create", teamId: "__proto__", name: "Evil", color: "#000" }).ok).toBe(false);
+    // Final: a wager reveal for an id that is not a contestant.
+    host({ type: "score/adjust", contestantId: "a", delta: 100 });
+    host({ type: "final/start" });
+    host({ type: "final/showClue" });
+    host({ type: "final/startTimer" });
+    host({ type: "final/close" });
+    host({ type: "final/reveal", contestantId: "a" });
+    for (const id of BAD) {
+      expect(host({ type: "final/judge", contestantId: id, correct: true }).ok).toBe(false);
+      expect(host({ type: "final/showWager", contestantId: id }).ok).toBe(false);
+      expect(host({ type: "final/hostWager", contestantId: id, amount: 0 }).ok).toBe(false);
+    }
+    expect(clean()).toBe(true);
+    expect(Object.keys(g.state.players)).toEqual(["a", "b", "c"]);
+    expect(Object.keys(g.state.scores).sort()).toEqual(["a", "b", "c", "t1"]);
+    void clue;
+  });
+
+  it("are skipped when an old saved log is replayed", () => {
+    const b = board();
+    const entry = (seq: number, action: GameAction): LogEntry => ({ seq, at: 1000 + seq, by: "host:u1", action });
+    const log: LogEntry[] = [
+      entry(1, { type: "player/join", playerId: "a", name: "Ann", signature: null }),
+      entry(2, { type: "player/rename", playerId: "__proto__", name: "pwned" }),
+      entry(3, { type: "player/kick", playerId: "constructor" }),
+      entry(4, { type: "player/ban", playerId: "__proto__" }),
+      entry(5, { type: "score/adjust", contestantId: "__proto__", delta: 100 }),
+      entry(6, { type: "player/rename", playerId: "a", name: "Anna" }),
+    ];
+    const g = new GameHistory({ board: b, settings: DEFAULT_SETTINGS }, log);
+    expect(clean()).toBe(true);
+    expect(g.state.players.a.name).toBe("Anna");
+    expect(g.state.bannedNames).toEqual([]);
+    expect(g.state.scoreEvents).toEqual([]);
+    expect(({} as { name?: string }).name).toBeUndefined();
+  });
+});
+
+describe("hard limits on a room", () => {
+  it("applies a ceiling to players and audience while the host's own limit is 0", () => {
+    const ctx = game({ maxPlayers: 0, maxAudience: 0 });
+    for (let i = 0; i < HARD_MAX_PLAYERS; i++) ctx.player({ type: "player/join", playerId: `p${i}`, name: `P${i}`, signature: null });
+    expect(ctx.player({ type: "player/join", playerId: "extra", name: "Extra", signature: null }).ok).toBe(false);
+    ctx.host({ type: "player/kick", playerId: "p0" });
+    expect(ctx.player({ type: "player/join", playerId: "extra", name: "Extra", signature: null }).ok).toBe(true);
+    // An explicit limit from the host still wins.
+    ctx.host({ type: "settings/update", settings: { maxPlayers: HARD_MAX_PLAYERS + 1 } });
+    expect(ctx.player({ type: "player/join", playerId: "one-more", name: "One More", signature: null }).ok).toBe(true);
+
+    const crowd = game();
+    const s = crowd.g.state;
+    for (let i = 0; i < HARD_MAX_AUDIENCE; i++) {
+      s.players[`w${i}`] = { id: `w${i}`, name: `W${i}`, signature: null, signatureHidden: false, teamId: null, joinedAt: 0, index: i, removed: false, banned: false, audience: true };
+      s.playerOrder.push(`w${i}`);
+    }
+    expect(crowd.player({ type: "player/join", playerId: "w-extra", name: "Extra", signature: null, audience: true }).ok).toBe(false);
+  });
+});
+
