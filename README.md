@@ -43,7 +43,7 @@ own copy (see [Quick start](#quick-start-docker)). A public instance runs at <ht
     after GO), Stop the clock (stop a hidden clock at 7.00), Count the pigs, and Tug of war (two
     sides). The host picks the game, shuffles them, restarts a round or stops it from the lobby
     screen. They never affect the game, and the host can turn them off. Emoji reactions work in
-    the lobby too.
+    the lobby too. Each game has its own sounds on the big screen (oinks, a GO horn, a win jingle).
   - *Everybody's in (off by default):* the host starts the game. Turn this on in Settings and
     the first player to join gets a crown and can start it from their phone, so a casual night
     needs no host device.

@@ -200,6 +200,53 @@ class SoundEngine {
       case "tick":
         this.noise(t, 0.03, { filter: "highpass", freq: 4000, gain: 0.12 });
         break;
+      // ---------------- lobby games (all original, synthesised like everything else)
+      case "miniBeep": // one per second of the countdown
+        this.tone(n(12), t, 0.09, { type: "square", gain: 0.1 });
+        break;
+      case "miniGo": // the round starts / GO!
+        this.tone(n(24), t, 0.35, { type: "square", gain: 0.14 });
+        this.tone(n(31), t, 0.35, { type: "triangle", gain: 0.12 });
+        this.noise(t, 0.12, { filter: "highpass", freq: 5000, gain: 0.08 });
+        break;
+      case "miniHold": // Quick draw: tense low hum while everyone waits
+        this.tone(n(-12), t, 0.5, { type: "triangle", gain: 0.12, attack: 0.1, release: 0.3 });
+        this.tone(n(-11), t, 0.5, { type: "sine", gain: 0.08, attack: 0.1, release: 0.3 });
+        break;
+      case "oink": {
+        // Two short nasal grunts; `arg` shifts the pitch so pigs do not all sound alike.
+        const base = 190 + ((arg ?? 0) % 5) * 22;
+        [0, 0.13].forEach((d, i) => {
+          this.tone(base * (i ? 1.12 : 1), t + d, 0.11, { type: "sawtooth", gain: 0.1, glideTo: base * 0.7, attack: 0.015 });
+          this.noise(t + d, 0.11, { filter: "bandpass", freq: 850, q: 4, gain: 0.07 });
+        });
+        break;
+      }
+      case "miniOut": // tapped too early / wrong number
+        this.tone(n(0), t, 0.22, { type: "sawtooth", gain: 0.12, glideTo: n(-7) });
+        this.noise(t, 0.1, { filter: "lowpass", freq: 600, gain: 0.08 });
+        break;
+      case "miniStop": // someone stopped the clock
+        this.noise(t, 0.04, { filter: "highpass", freq: 3000, gain: 0.14 });
+        this.tone(n(28), t, 0.08, { type: "sine", gain: 0.1 });
+        break;
+      case "miniPop": // the pigs appear
+        for (let i = 0; i < 6; i++) this.tone(n(12 + ((i * 5) % 12)), t + i * 0.06, 0.09, { type: "sine", gain: 0.12, glideTo: n(24 + ((i * 5) % 12)) });
+        break;
+      case "miniHeave": // the rope moves a notch
+        this.noise(t, 0.22, { filter: "bandpass", freq: 300, freqTo: 700, q: 3, gain: 0.12, attack: 0.04 });
+        this.tone(n(-8 + ((arg ?? 0) % 2) * 5), t, 0.2, { type: "triangle", gain: 0.1, glideTo: n(-5 + ((arg ?? 0) % 2) * 5) });
+        break;
+      case "miniWin": // a short win jingle (not the end-of-game fanfare)
+        [12, 16, 19, 24].forEach((st, i) => this.tone(n(st), t + i * 0.09, i === 3 ? 0.5 : 0.12, { type: "triangle", gain: 0.18 }));
+        this.tone(n(28), t + 0.27, 0.5, { type: "sine", gain: 0.1 });
+        this.noise(t + 0.27, 0.3, { filter: "highpass", freq: 6000, gain: 0.05 });
+        break;
+      case "miniDraw": // nobody won
+        this.tone(n(7), t, 0.18, { type: "triangle", gain: 0.14 });
+        this.tone(n(4), t + 0.16, 0.18, { type: "triangle", gain: 0.14 });
+        this.tone(n(0), t + 0.32, 0.4, { type: "triangle", gain: 0.14 });
+        break;
       // ---------------- soundboard
       case "applause":
         for (let i = 0; i < 120; i++) this.noise(t + Math.random() * 3, 0.03 + Math.random() * 0.04, { filter: "bandpass", freq: 1500 + Math.random() * 2500, q: 1.5, gain: 0.05 + Math.random() * 0.08 });

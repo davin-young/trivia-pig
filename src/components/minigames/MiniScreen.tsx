@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useRef } from "react";
+import { sound } from "@/client/sound";
 import { useTick } from "@/client/useGame";
 import { useCountdown } from "@/components/game";
 import type { GameView } from "@/engine/views";
@@ -25,6 +27,56 @@ function pigSpots(seed: number, n: number): { x: number; y: number; flip: boolea
   }));
 }
 
+/**
+ * Sound for the lobby games, played on the big screen only. Each cue fires on a change in
+ * the round (a new phase, somebody out, a pig passing a quarter of the track), never per tap.
+ */
+function useMiniSounds(round: MiniRound, countdownSec: number, now: () => number) {
+  const { id, kind, phase } = round;
+  // The countdown: a beep each second.
+  useEffect(() => {
+    if (phase === "countdown") sound().play("miniBeep");
+  }, [id, phase, countdownSec]);
+  // The round starts and ends.
+  useEffect(() => {
+    if (phase === "running") sound().play(kind === "reflex" ? "miniHold" : kind === "count" ? "miniPop" : "miniGo");
+    if (phase === "done") sound().play(round.winnerId || (kind === "tug" && round.pull !== 0) ? "miniWin" : "miniDraw");
+    // Only the phase matters here; the winner is already known when "done" arrives.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, phase]);
+  // Quick draw: GO.
+  const go = kind === "reflex" && phase === "running" && !!round.go;
+  useEffect(() => {
+    if (go) sound().play("miniGo");
+  }, [id, go]);
+  // Somebody is out (tapped early, wrong number), or stopped the clock.
+  const out = round.out ?? 0;
+  const stopped = round.stopped ?? 0;
+  useEffect(() => {
+    if (out > 0 && phase === "running") sound().play("miniOut");
+  }, [id, out, phase]);
+  useEffect(() => {
+    if (stopped > 0 && phase === "running") sound().play("miniStop");
+  }, [id, stopped, phase]);
+  // Stop the clock: a tick each second while the clock is still showing.
+  const clockSec = kind === "clock" && phase === "running" ? Math.min(2, Math.floor(Math.max(0, now() - round.startsAt) / 1000)) : -1;
+  useEffect(() => {
+    if (clockSec >= 0 && clockSec < 2) sound().play("tick");
+  }, [id, clockSec]);
+  // Pig race: an oink whenever the leading pig passes another quarter of the track.
+  const lead = kind === "race" ? Math.floor((Math.max(0, ...(round.lanes ?? []).map((l) => l.taps)) / (round.goal ?? 1)) * 4) : 0;
+  // Tug of war: a heave each time the rope moves another notch either way.
+  const notch = kind === "tug" ? Math.trunc((round.pull ?? 0) * 5) : 0;
+  const last = useRef({ id: 0, lead: 0, notch: 0 });
+  useEffect(() => {
+    if (last.current.id !== id) last.current = { id, lead: 0, notch: 0 };
+    if (phase === "running" && lead > last.current.lead && lead < 4) sound().play("oink", lead);
+    if (phase === "running" && notch !== last.current.notch) sound().play("miniHeave", notch > last.current.notch ? 1 : 0);
+    last.current.lead = lead;
+    last.current.notch = notch;
+  }, [id, phase, lead, notch]);
+}
+
 /** The lobby game on the big screen. */
 export function MiniScreen({ view, round, now }: { view: GameView; round: MiniRound; now: () => number }) {
   const info = LOBBY_GAME_INFO[round.kind];
@@ -33,6 +85,7 @@ export function MiniScreen({ view, round, now }: { view: GameView; round: MiniRo
   const player = (id: string | null) => view.players.find((p) => p.id === id);
   const colorOf = (id: string | null) => TEAM_COLORS[(player(id)?.index ?? 0) % TEAM_COLORS.length];
   const done = round.phase === "done";
+  useMiniSounds(round, Math.max(1, Math.ceil((left ?? 0) / 1000)), now);
 
   return (
     <section className="rounded-[2vmin] bg-black/40 p-[1.6vmin] shadow-xl ring-1 ring-white/10" aria-label={info.name}>
