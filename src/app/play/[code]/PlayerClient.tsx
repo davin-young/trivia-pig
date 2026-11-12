@@ -11,6 +11,7 @@ import { Ink } from "@/components/Ink";
 import { ConnBanner, MediaView, StatusDot, TimerBar, contestantName, contestants, formatDelta, formatScore, ordinal, playerName, useAnimatedNumber, useCountdown, useBoardTheme, useDelta } from "@/components/game";
 import type { GameView } from "@/engine/views";
 import { AVATAR_CANVAS, FINAL_CANVAS, NAME_CANVAS, isEmptyDrawing, type Drawing } from "@/shared/strokes";
+import { fetchProfile, linkSeat, saveProfile, setRemembering, wantsRemembering } from "@/client/playerProfile";
 import { REACTIONS } from "@/shared/protocol";
 
 export default function PlayerClient({ code }: { code: string }) {
@@ -222,6 +223,24 @@ function JoinForm({ view, emit, code, rejoinName }: { view: GameView; emit: Emit
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [seats, setSeats] = useState<{ id: string; name: string }[]>([]);
+  // The saved player for this device or account, if any: fills in the name and drawings.
+  const [saved, setSaved] = useState<{ signature: Drawing | null; avatar: Drawing | null } | null>(null);
+  const [remember, setRemember] = useState(true);
+  useEffect(() => {
+    setRemember(wantsRemembering());
+    let live = true;
+    void fetchProfile().then((p) => {
+      if (!live || !p) return;
+      setName((n) => n || p.name);
+      setDrawing(p.signature);
+      setAvatar(p.avatar);
+      if (p.avatar) setShowAvatar(true);
+      setSaved({ signature: p.signature, avatar: p.avatar });
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
   const closed = view.lobbyLocked || (view.phase !== "lobby" && !view.settings.allowLateJoin);
   const canWatch = view.settings.audience;
   // An audience link (?audience=1) opens straight on "join the audience".
@@ -244,16 +263,35 @@ function JoinForm({ view, emit, code, rejoinName }: { view: GameView; emit: Emit
     };
   }, [emit, rejoinName, playerCount, view.settings.reclaimSeats]);
 
-  function done(res: Awaited<ReturnType<Emit>>) {
-    setBusy(false);
-    if (!res.ok) return setErr(res.error);
+  async function done(res: Awaited<ReturnType<Emit>>, keep: "save" | "link" | "no") {
+    if (!res.ok) {
+      setBusy(false);
+      return setErr(res.error);
+    }
     const data = res.data as { playerToken?: string };
     if (data.playerToken) setPlayerToken(code, data.playerToken);
+    // Remember the player (if they want that) and count this seat toward their stats. The
+    // game itself never waits on this.
+    if (keep !== "no" && (keep === "link" ? saved : remember)) {
+      const token = data.playerToken ?? getPlayerToken(code);
+      void (async () => {
+        if (keep === "save") {
+          const r = await saveProfile({
+            name: name.trim(),
+            signature: drawing && !isEmptyDrawing(drawing) ? drawing : null,
+            ...(view.settings.avatars ? { avatar: avatar && !isEmptyDrawing(avatar) ? avatar : null } : {}),
+          });
+          if (!r.profile) return;
+        }
+        await linkSeat(token);
+      })();
+    }
+    setBusy(false);
   }
   async function submit(asAudience = false) {
     setBusy(true);
     setErr(null);
-    done(
+    await done(
       await emit("player:join", {
         name: name.trim(),
         signature: !asAudience && drawing && !isEmptyDrawing(drawing) ? drawing : null,
@@ -261,12 +299,13 @@ function JoinForm({ view, emit, code, rejoinName }: { view: GameView; emit: Emit
         teamId,
         audience: asAudience || undefined,
       }),
+      asAudience ? "no" : "save",
     );
   }
   async function reclaim(playerId: string) {
     setBusy(true);
     setErr(null);
-    done(await emit("player:reclaim", { playerId }));
+    await done(await emit("player:reclaim", { playerId }), "link");
   }
 
   const nameField = (
@@ -331,7 +370,7 @@ function JoinForm({ view, emit, code, rejoinName }: { view: GameView; emit: Emit
               <span className="text-sm text-white/70">Sign your name ✍️</span>
               <span className="text-xs text-white/40">optional — shown on the big screen</span>
             </div>
-            <DrawingPad width={NAME_CANVAS.w} height={NAME_CANVAS.h} multiColor={view.settings.multiColor} onChange={setDrawing} placeholder="Draw your name here" />
+            <DrawingPad key={saved ? "saved" : "new"} width={NAME_CANVAS.w} height={NAME_CANVAS.h} multiColor={view.settings.multiColor} initial={saved?.signature} onChange={setDrawing} placeholder="Draw your name here" />
           </div>
           {view.settings.avatars &&
             (showAvatar ? (
@@ -343,7 +382,7 @@ function JoinForm({ view, emit, code, rejoinName }: { view: GameView; emit: Emit
                   </button>
                 </div>
                 <div className="mx-auto max-w-[16rem]">
-                  <DrawingPad width={AVATAR_CANVAS.w} height={AVATAR_CANVAS.h} multiColor={view.settings.multiColor} onChange={setAvatar} placeholder="A face, a pig, anything" />
+                  <DrawingPad key={saved ? "saved" : "new"} width={AVATAR_CANVAS.w} height={AVATAR_CANVAS.h} multiColor={view.settings.multiColor} initial={saved?.avatar} onChange={setAvatar} placeholder="A face, a pig, anything" />
                 </div>
               </div>
             ) : (
@@ -365,6 +404,21 @@ function JoinForm({ view, emit, code, rejoinName }: { view: GameView; emit: Emit
             </div>
           )}
           {err && <div className="rounded-lg bg-red-600/20 p-3 text-red-300">{err}</div>}
+          <div className="flex items-center justify-between gap-3 text-sm text-white/70">
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                className="h-5 w-5"
+                checked={remember}
+                onChange={(e) => {
+                  setRemember(e.target.checked);
+                  setRemembering(e.target.checked);
+                }}
+              />
+              Remember me on this device
+            </label>
+            <Link href="/player" className="shrink-0 underline underline-offset-2">{saved ? "My player card" : "What's this?"}</Link>
+          </div>
           <button className="btn-primary py-4 text-xl" disabled={busy || !name.trim()} onClick={() => submit(false)}>
             {busy ? "Joining…" : rejoinName ? "Rejoin game" : "Join game"}
           </button>

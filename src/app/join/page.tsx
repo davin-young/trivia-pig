@@ -31,6 +31,9 @@ export default async function JoinPage({ searchParams }: { searchParams: Promise
         {" · "}
         <Link href="/display" className="underline underline-offset-2 hover:text-white">Open the big screen</Link>
       </p>
+      <p className="text-sm text-white/60">
+        <Link href="/player" className="underline underline-offset-2 hover:text-white">My player card</Link>: your saved name, signature and results
+      </p>
     </main>
   );
 }
