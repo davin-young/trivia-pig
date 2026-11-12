@@ -1,0 +1,26 @@
+# Documented scanner exceptions. Keep this list short: every entry needs a reason.
+#
+# sharp / libvips (LGPL-3.0-or-later)
+#   Where it comes from: sharp is an optional dependency of Next.js, used only by the
+#   built-in image optimizer. This app sets `images: { unoptimized: true }` in
+#   next.config.ts, so that code path is never used, and the Dockerfile deletes sharp
+#   and its libvips binaries from the runtime image. They remain in package-lock.json
+#   only because npm cannot drop another package's optional dependency.
+#   Why it is acceptable: the @img/sharp-libvips-* packages are unmodified prebuilt
+#   libvips binaries that sharp loads as a separate shared library. LGPL allows that
+#   use from MIT-licensed code; nothing here is statically linked or modified.
+#   Scope: only these three license expressions, only in package-lock.json.
+#   Review when Next.js or sharp is upgraded.
+licenses:
+  - id: LGPL-3.0-or-later
+    paths:
+      - package-lock.json
+    statement: Prebuilt libvips binaries pulled in by Next.js's optional sharp dependency; dynamically loaded, unmodified, and unused (images.unoptimized).
+  - id: Apache-2.0 AND LGPL-3.0-or-later
+    paths:
+      - package-lock.json
+    statement: sharp Windows builds that bundle the same prebuilt libvips; see above.
+  - id: Apache-2.0 AND LGPL-3.0-or-later AND MIT
+    paths:
+      - package-lock.json
+    statement: sharp WebAssembly build that bundles the same prebuilt libvips; see above.

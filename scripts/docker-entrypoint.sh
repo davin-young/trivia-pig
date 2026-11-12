@@ -1,6 +1,7 @@
 #!/bin/sh
 # Container entrypoint.
-#   1. (as root) make the data volume writable by the unprivileged "app" user, then drop to it
+#   1. the image runs as the unprivileged "app" user (uid 10001). Only if someone starts it as
+#      root on purpose (user: "0") does it fix the data volume's ownership and drop to "app"
 #   2. wait for Postgres and apply migrations (retries, so boot order does not matter)
 #   3. optionally seed the demo account
 #   4. start the server (tini is PID 1 and forwards signals)

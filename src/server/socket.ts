@@ -75,7 +75,7 @@ export function attachSocketServer(io: Server, deps: SocketAuthDeps = prismaSock
     const gameP = manager
       .load(socket.data.gameId)
       .catch((err) => {
-        console.error(`[socket] could not load game ${socket.data.code}`, err);
+        console.error("[socket] could not load game %s", socket.data.code, err);
         return null;
       })
       .then((game) => {
@@ -122,7 +122,7 @@ export function attachSocketServer(io: Server, deps: SocketAuthDeps = prismaSock
         try {
           reply(await handler(game, socket, parsed.data as never));
         } catch (err) {
-          console.error(`[socket ${event}]`, err);
+          console.error("[socket %s]", event, err);
           reply({ ok: false, error: "Server error" });
         }
       });

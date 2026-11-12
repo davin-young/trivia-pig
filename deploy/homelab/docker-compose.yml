@@ -55,6 +55,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      uploads-init:
+        condition: service_completed_successfully
     # The image has its own HEALTHCHECK on /healthz; these values just make it explicit.
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
@@ -70,6 +72,28 @@ services:
     # ports:
     #   - "3000:3000"
     networks: [internal, edge]
+
+  # The app image runs as uid 10001 and never as root. Docker creates bind-mounted folders
+  # owned by root, so this one-shot job hands ./data/uploads to the app user, then exits.
+  uploads-init:
+    image: ${APP_IMAGE:-triviapig:local}
+    pull_policy: ${APP_PULL_POLICY:-build}
+    build:
+      context: ../..
+      args:
+        NEXT_PUBLIC_APP_NAME: ${APP_NAME:-Trivia Pig}
+        APP_VERSION: ${APP_VERSION:-homelab}
+    user: "0"
+    entrypoint: ["sh", "-c", "mkdir -p /data/uploads && chown -R 10001:10001 /data/uploads"]
+    restart: "no"
+    logging: *logging
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER]
+    network_mode: none
+    volumes:
+      - ./data/uploads:/data/uploads
 
   db:
     <<: *defaults
@@ -148,7 +172,9 @@ services:
     command: start --import-realm
     environment:
       KC_DB: postgres
-      KC_DB_URL: jdbc:postgresql://keycloak-db:5432/keycloak
+      KC_DB_URL_HOST: keycloak-db
+      KC_DB_URL_PORT: "5432"
+      KC_DB_URL_DATABASE: keycloak
       KC_DB_USERNAME: keycloak
       KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
       KC_HOSTNAME: https://${KEYCLOAK_HOST:-auth.triviapig.lol}
