@@ -39,9 +39,10 @@ own copy (see [Quick start](#quick-start-docker)). A public instance runs at <ht
     An audience link (`/join?code=CODE&audience=1`) opens straight on "join the audience", and
     the host can set an audience limit.
   - *Boards from your AI:* `/ai` has a prompt to paste into any assistant and a box for its
-    reply. Assistants that support MCP connect to `/mcp` with a personal token and save boards
-    straight to the account; the same token works on `/api/v1/boards`. Tokens reach only their
-    owner's boards.
+    reply. Assistants that support MCP connect to `/mcp` and save boards straight to the account:
+    add the address as a connector and sign in (OAuth), or use a personal token, which also
+    works on `/api/v1/boards`. Either way an app reaches only its owner's boards, and can be
+    disconnected from `/ai`.
   - *Spectators and streaming:* `/watch/CODE` lets anyone follow the game on their own screen
     without joining. For streaming software, `/display/CODE?obs=1` is the big screen with no
     buttons and sound that starts by itself (`&mute=1` for silence), and `/overlay/CODE` is a

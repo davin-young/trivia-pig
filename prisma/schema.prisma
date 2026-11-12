@@ -54,6 +54,8 @@ model User {
   memberships Membership[] @relation("member")
   invites     Invite[]
   apiTokens   ApiToken[]
+  oauthCodes  OAuthCode[]
+  oauthGrants OAuthGrant[]
 }
 
 /// A personal access token for the board API and the MCP server. Only its hash is stored.
@@ -67,6 +69,49 @@ model ApiToken {
   hint       String
   lastUsedAt DateTime?
   createdAt  DateTime  @default(now())
+
+  @@index([userId])
+}
+
+/// An AI app that registered itself to sign people in (OAuth dynamic client registration).
+/// Public clients only: there is no client secret.
+model OAuthClient {
+  id           String       @id
+  name         String
+  redirectUris String[]
+  createdAt    DateTime     @default(now())
+  codes        OAuthCode[]
+  grants       OAuthGrant[]
+}
+
+/// A one-time authorization code (5 minutes). Only its hash is stored.
+model OAuthCode {
+  id            String      @id @default(cuid())
+  codeHash      String      @unique
+  clientId      String
+  client        OAuthClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  redirectUri   String
+  codeChallenge String
+  expiresAt     DateTime
+
+  @@index([expiresAt])
+}
+
+/// One app connected to one account: its current access and refresh tokens (hashes only).
+model OAuthGrant {
+  id               String      @id @default(cuid())
+  userId           String
+  user             User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clientId         String
+  client           OAuthClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  accessHash       String      @unique
+  accessExpiresAt  DateTime
+  refreshHash      String      @unique
+  refreshExpiresAt DateTime
+  lastUsedAt       DateTime?
+  createdAt        DateTime    @default(now())
 
   @@index([userId])
 }
