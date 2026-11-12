@@ -9,10 +9,10 @@ export const metadata = {
   alternates: { canonical: "/join" },
 };
 
-export default async function JoinPage({ searchParams }: { searchParams: Promise<{ code?: string }> }) {
-  const { code } = await searchParams;
+export default async function JoinPage({ searchParams }: { searchParams: Promise<{ code?: string; audience?: string }> }) {
+  const { code, audience } = await searchParams;
   // QR codes link straight here with ?code=XXXX — skip the form.
-  if (code && /^[A-Za-z0-9]{4,6}$/.test(code)) redirect(`/play/${code.toUpperCase()}`);
+  if (code && /^[A-Za-z0-9]{4,6}$/.test(code)) redirect(`/play/${code.toUpperCase()}${audience === "1" ? "?audience=1" : ""}`);
   return (
     <main className="flex min-h-dvh flex-col items-center justify-center gap-6 bg-gradient-to-b from-[var(--board-deep)] to-[var(--board-edge)] p-6">
       <div className="text-center">

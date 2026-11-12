@@ -23,7 +23,15 @@ import {
   useOrigin,
   type Contestant, useBoardTheme } from "@/components/game";
 
-export default function DisplayClient({ code }: { code: string }) {
+/**
+ * The big screen. The same screen also serves two other uses:
+ *  - mode "watch": the /watch link, for someone following along on their own device. It does
+ *    not count as the room's display, starts silent, and never shows the join QR.
+ *  - obs: a browser source in streaming software, where nobody can click. Sound starts by
+ *    itself (or stays off with mute) and the fullscreen button and cursor are hidden.
+ */
+export default function DisplayClient({ code, mode = "display", obs = false, mute = false }: { code: string; mode?: "display" | "watch"; obs?: boolean; mute?: boolean }) {
+  const watching = mode === "watch";
   const [soundOn, setSoundOn] = useState(false);
   useWakeLock();
   const viewRef = useRef<GameView | null>(null);
@@ -62,9 +70,16 @@ export default function DisplayClient({ code }: { code: string }) {
   const { view, presence, status, error, now } = useGame({
     role: "display",
     code,
+    watch: watching,
     onFx,
-    onRedirect: (next) => window.location.replace(`/display/${next}`),
+    onRedirect: (next) => window.location.replace(`/${watching ? "watch" : "display"}/${next}${window.location.search}`),
   });
+
+  // Streaming software cannot click "enable sound"; its browser source may play audio unasked.
+  useEffect(() => {
+    if (!obs || mute) return;
+    void sound().unlock().then((ok) => ok && setSoundOn(true));
+  }, [obs, mute]);
   useBoardTheme(view?.theme);
   viewRef.current = view;
 
@@ -103,8 +118,22 @@ export default function DisplayClient({ code }: { code: string }) {
     );
   }
 
+  if (watching && !view.settings.spectators) {
+    return (
+      <Shell>
+        <div className="grid h-full place-items-center p-[4vmin] text-center">
+          <div>
+            <div className="text-[9vmin]">🙈</div>
+            <div className="cat-text text-[5vmin]">Watching is turned off for this game</div>
+            <p className="mt-[1vmin] text-[2.6vmin] text-white/70">The host can turn the watch link back on in Settings.</p>
+          </div>
+        </div>
+      </Shell>
+    );
+  }
+
   return (
-    <Shell>
+    <Shell hideCursor={obs}>
       <ConnBanner status={status} error={error} />
       <Stage view={view} now={now} presence={presence} />
       {caption && (
@@ -114,7 +143,7 @@ export default function DisplayClient({ code }: { code: string }) {
       )}
       {view.screen === "scores" && <ScoresOverlay view={view} />}
       {view.announcement && <Announcement key={view.announcement.at} text={view.announcement.text} />}
-      {view.showJoinQr && view.phase !== "lobby" && !view.settings.hideCode && <CornerQr code={view.code} />}
+      {view.showJoinQr && view.phase !== "lobby" && !view.settings.hideCode && !watching && <CornerQr code={view.code} />}
       {/* Above the scoreboard, "be right back" and blank screens, so the room can still react. */}
       {(
         <div className="pointer-events-none fixed inset-0 z-50 overflow-hidden" aria-hidden>
@@ -129,7 +158,7 @@ export default function DisplayClient({ code }: { code: string }) {
       {view.paused && view.screen === "none" && <PausedOverlay />}
       {view.screen === "brb" && <BrbScreen title={view.title} />}
       {view.screen === "blank" && <div className="fixed inset-0 z-40 bg-black" />}
-      {!soundOn && (
+      {!soundOn && !watching && !obs && (
         <EnableSound
           onEnable={async () => {
             await sound().unlock();
@@ -137,7 +166,19 @@ export default function DisplayClient({ code }: { code: string }) {
           }}
         />
       )}
-      <FullscreenButton />
+      {watching && (
+        <WatchBar
+          code={view.code}
+          canJoin={view.settings.audience}
+          soundOn={soundOn}
+          onSound={async () => {
+            if (soundOn) await sound().suspend();
+            else await sound().unlock();
+            setSoundOn(!soundOn);
+          }}
+        />
+      )}
+      {!obs && <FullscreenButton />}
     </Shell>
   );
 }
@@ -160,8 +201,25 @@ const CAPTIONS: Record<string, string> = {
   announce: "[chime] Announcement",
 };
 
-function Shell({ children }: { children: React.ReactNode }) {
-  return <main className="relative h-dvh w-screen select-none overflow-hidden bg-[var(--board-edge)] text-white">{children}</main>;
+function Shell({ children, hideCursor }: { children: React.ReactNode; hideCursor?: boolean }) {
+  return <main className={`relative h-dvh w-screen select-none overflow-hidden bg-[var(--board-edge)] text-white ${hideCursor ? "cursor-none" : ""}`}>{children}</main>;
+}
+
+/** Spectator controls: their own sound switch, and a way into the audience. */
+function WatchBar({ code, canJoin, soundOn, onSound }: { code: string; canJoin: boolean; soundOn: boolean; onSound: () => void }) {
+  return (
+    <div className="fixed left-1/2 top-[1vmin] z-50 flex -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-lg bg-black/50 px-2 py-1.5 text-sm text-white/80 opacity-60 transition hover:opacity-100 focus-within:opacity-100">
+      <span>👀 Watching</span>
+      <button type="button" onClick={onSound} aria-pressed={soundOn} className="rounded bg-white/15 px-2 py-0.5 hover:bg-white/25">
+        {soundOn ? "🔊 Sound on" : "🔇 Sound off"}
+      </button>
+      {canJoin && (
+        <a href={`/join?code=${code}&audience=1`} className="rounded bg-white/15 px-2 py-0.5 hover:bg-white/25">
+          React and cheer
+        </a>
+      )}
+    </div>
+  );
 }
 
 function Stage({ view, now, presence }: { view: GameView; now: () => number; presence: PresenceView | null }) {
@@ -290,7 +348,7 @@ function Lobby({ view, presence, now }: { view: GameView; presence: PresenceView
       <footer className="flex items-center justify-between gap-[3vmin] text-[2.6vmin]">
         <div className="text-white/80">
           <span className="money text-[3.6vmin] text-gold">{n}</span> {n === 1 ? "player is" : "players are"} in
-          {view.crowd.count > 0 && <span className="text-white/60"> · {view.crowd.count} watching</span>}
+          {view.crowd.count + (presence?.spectators ?? 0) > 0 && <span className="text-white/60"> · {view.crowd.count + (presence?.spectators ?? 0)} watching</span>}
         </div>
         {view.lobbyLocked ? (
           <div className="rounded-full bg-red-600 px-[2vmin] py-[0.6vmin] text-[2.2vmin] font-bold">ROOM LOCKED · starting soon</div>

@@ -28,6 +28,11 @@ class SoundEngine {
     return this.ctx?.state === "running";
   }
 
+  /** Silence this device only (a spectator muting their own tab). */
+  async suspend(): Promise<void> {
+    if (this.ctx && this.ctx.state === "running") await this.ctx.suspend().catch(() => {});
+  }
+
   /** Must be called from a user gesture (browser autoplay rules). */
   async unlock(): Promise<boolean> {
     if (!this.ctx) {

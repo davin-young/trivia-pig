@@ -61,6 +61,7 @@ export function attachSocketServer(io: Server, deps: SocketAuthDeps = prismaSock
         userId: id.role === "host" ? id.userId : undefined,
         hostRole: id.role === "host" ? id.hostRole : undefined,
         playerId: id.role === "player" ? id.playerId : undefined,
+        spectator: id.role === "display" ? id.spectator : undefined,
       };
       next();
     } catch (err) {
@@ -230,7 +231,7 @@ const playerHandlers: Partial<Record<ClientEvent, Handler>> = {
     if (!res.ok) {
       const s = game.state;
       const reason = audience
-        ? "This game isn't taking an audience"
+        ? s.settings.audience ? "The audience is full" : "This game isn't taking an audience"
         : s.lobbyLocked
         ? "The lobby is locked"
         : s.phase !== "lobby" && !s.settings.allowLateJoin

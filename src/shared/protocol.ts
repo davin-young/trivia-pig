@@ -93,6 +93,8 @@ export const handshakeSchema = z.object({
   role: z.enum(["display", "host", "player"]),
   code: z.string().min(4).max(6).regex(/^[A-Za-z0-9]+$/),
   playerToken: z.string().min(10).max(100).optional(),
+  /** A display that is only watching (the /watch link or a stream overlay), not the room's big screen. */
+  watch: z.boolean().optional(),
 });
 export type Handshake = z.infer<typeof handshakeSchema>;
 
@@ -133,6 +135,8 @@ export type PresenceStatus = "online" | "reconnecting" | "offline";
 export interface PresenceView {
   display: PresenceStatus;
   displays: number;
+  /** Browsers following along through the watch link or a stream overlay. */
+  spectators: number;
   hosts: { role: string; count: number }[];
   players: Record<string, PresenceStatus>;
   /** True while the server cannot write this game to the database (hosts only see this). */

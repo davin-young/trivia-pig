@@ -161,8 +161,37 @@ function SmallBtn({ children, onClick, danger }: { children: React.ReactNode; on
 
 // ----------------------------------------------------------------- display
 
+/** One shareable link with a copy button. */
+function LinkRow({ label, hint, url }: { label: string; hint: string; url: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="rounded-lg bg-panel-2 p-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <div className="text-sm font-semibold">{label}</div>
+          <div className="text-xs text-white/60">{hint}</div>
+        </div>
+        <SmallBtn
+          onClick={async () => {
+            try {
+              await navigator.clipboard.writeText(url);
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1500);
+            } catch {}
+          }}
+        >
+          {copied ? "Copied ✓" : "Copy"}
+        </SmallBtn>
+      </div>
+      <code className="mt-1 block select-all break-all text-xs text-white/70">{url}</code>
+    </div>
+  );
+}
+
 export function DisplayPanel() {
-  const { view, act } = useHost();
+  const { view, act, presence } = useHost();
+  const origin = useOrigin();
+  const watchers = presence?.spectators ?? 0;
   const [text, setText] = useState("");
   const screens: { id: "none" | "blank" | "brb" | "scores"; label: string }[] = [
     { id: "none", label: "🎮 Game" },
@@ -199,6 +228,19 @@ export function DisplayPanel() {
         <Toggle label="Lock lobby (no new joins)" checked={view.lobbyLocked} onChange={(v) => act({ type: "lobby/lock", locked: v })} />
       </section>
       <a className="btn-ghost" href={`/display/${view.code}`} target="_blank" rel="noreferrer">Open display in a new tab ↗</a>
+      {origin && (
+        <section className="flex flex-col gap-2">
+          <h3 className="font-semibold">
+            Streaming and spectators
+            {watchers > 0 && <span className="font-normal text-white/60"> · {watchers} watching</span>}
+          </h3>
+          {view.settings.spectators && <LinkRow label="Watch link" hint="Viewers follow the game on their own screen. They cannot buzz or score." url={`${origin}/watch/${view.code}`} />}
+          {view.settings.audience && <LinkRow label="Audience link" hint="Viewers join from their phone to send reactions and cheer for a player." url={`${origin}/join?code=${view.code}&audience=1`} />}
+          <LinkRow label="Streaming software (browser source)" hint="The big screen with no buttons; sound starts by itself. Add &mute=1 for no sound." url={`${origin}/display/${view.code}?obs=1`} />
+          <LinkRow label="Score overlay" hint="A see-through score strip to lay over your camera. Add ?pos=top to move it up." url={`${origin}/overlay/${view.code}`} />
+          <Toggle label="Streamer mode: keep the room code and QR off the big screen" checked={view.settings.hideCode} onChange={(v) => act({ type: "settings/update", settings: { hideCode: v } })} />
+        </section>
+      )}
     </div>
   );
 }
@@ -295,11 +337,15 @@ export function SettingsPanel() {
       <h3 className="mt-2 font-semibold">Party</h3>
       <Toggle label="First player in can start the game from their phone (👑)" checked={s.vipStart} onChange={(v) => set({ vipStart: v })} />
       <NumField label="Start countdown on the big screen (seconds, 0 = off)" value={s.startCountdownSec} min={0} max={30} onSave={(v) => set({ startCountdownSec: v })} />
-      <Toggle label="Audience: extra people can watch, react and cheer without playing" checked={s.audience} onChange={(v) => set({ audience: v })} />
       <Toggle label="Doodle avatars next to drawn names" checked={s.avatars} onChange={(v) => set({ avatars: v })} />
       <Toggle label="Players who lost their phone can take their seat back by name" checked={s.reclaimSeats} onChange={(v) => set({ reclaimSeats: v })} />
       <Toggle label="Family friendly: you approve every drawing before it shows on the big screen" checked={s.familyMode} onChange={(v) => set({ familyMode: v })} />
+      <h3 className="mt-2 font-semibold">Streaming and audience</h3>
       <Toggle label="Streamer mode: keep the room code and QR off the big screen" checked={s.hideCode} onChange={(v) => set({ hideCode: v })} />
+      <Toggle label="Watch link: anyone with the link can follow the game on their own screen" checked={s.spectators} onChange={(v) => set({ spectators: v })} />
+      <Toggle label="Audience: extra people can join to react and cheer without playing" checked={s.audience} onChange={(v) => set({ audience: v })} />
+      {s.audience && <NumField label="Audience limit (0 = no limit)" value={s.maxAudience} min={0} max={100000} onSave={(v) => set({ maxAudience: v })} />}
+      <span className="text-xs text-white/40">Links for viewers and streaming software are under Display.</span>
       <h3 className="mt-2 font-semibold">Accessibility</h3>
       <Field label="Timers">
         <div className="flex gap-2">

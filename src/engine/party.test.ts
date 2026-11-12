@@ -82,6 +82,16 @@ describe("audience", () => {
     expect(g.state.scores.w).toBeUndefined();
   });
 
+  it("stops at the audience limit, and frees a place when someone is removed", () => {
+    const { join, act } = lobby({ maxAudience: 2 });
+    expect(join("w1", "Wendy", { audience: true }).ok).toBe(true);
+    expect(join("w2", "Wes", { audience: true }).ok).toBe(true);
+    expect(join("w3", "Wim", { audience: true }).ok).toBe(false);
+    expect(join("a", "Ann").ok).toBe(true);
+    act({ type: "player/kick", playerId: "w1" });
+    expect(join("w3", "Wim", { audience: true }).ok).toBe(true);
+  });
+
   it("cannot buzz, and can be switched off", () => {
     const { g, join, act, clue } = lobby();
     join("a", "Ann");

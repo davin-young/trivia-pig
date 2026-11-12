@@ -133,6 +133,10 @@ function JoinForm({ view, emit, code, rejoinName }: { view: GameView; emit: Emit
   const [seats, setSeats] = useState<{ id: string; name: string }[]>([]);
   const closed = view.lobbyLocked || (view.phase !== "lobby" && !view.settings.allowLateJoin);
   const canWatch = view.settings.audience;
+  // An audience link (?audience=1) opens straight on "join the audience".
+  const [watchOnly, setWatchOnly] = useState(false);
+  useEffect(() => setWatchOnly(new URLSearchParams(window.location.search).get("audience") === "1"), []);
+  const asWatcher = watchOnly && canWatch && !closed;
 
   // Seats whose phone dropped off: let the person take theirs back by name.
   const playerCount = view.players.length;
@@ -198,13 +202,22 @@ function JoinForm({ view, emit, code, rejoinName }: { view: GameView; emit: Emit
         <h1 className="cat-text text-3xl">{view.title}</h1>
         <div className="money text-xl tracking-widest">{code}</div>
       </div>
-      {closed && !rejoinName ? (
+      {(closed || asWatcher) && !rejoinName ? (
         <>
-          <div className="card text-center">{view.lobbyLocked ? "The host has locked the room." : "This game has already started and isn't accepting new players."}</div>
-          {seatPicker}
+          {asWatcher ? (
+            <div className="card text-center">
+              You&apos;re joining the audience.
+              <button type="button" className="mt-1 block w-full text-sm text-white/60 underline" onClick={() => setWatchOnly(false)}>I want to play instead</button>
+            </div>
+          ) : (
+            <>
+              <div className="card text-center">{view.lobbyLocked ? "The host has locked the room." : "This game has already started and isn't accepting new players."}</div>
+              {seatPicker}
+            </>
+          )}
           {canWatch && (
             <>
-              <p className="text-center text-sm text-white/70">You can still watch: send reactions to the big screen and cheer for a player.</p>
+              <p className="text-center text-sm text-white/70">{asWatcher ? "Send reactions to the big screen and cheer for a player." : "You can still watch: send reactions to the big screen and cheer for a player."}</p>
               {nameField}
               {err && <div className="rounded-lg bg-red-600/20 p-3 text-red-300">{err}</div>}
               <button className="btn-primary py-4 text-xl" disabled={busy || !name.trim()} onClick={() => submit(true)}>

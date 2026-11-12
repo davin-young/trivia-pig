@@ -36,6 +36,13 @@ own copy (see [Quick start](#quick-start-docker)). A public instance runs at <ht
   - *Start countdown:* a "starting in 5…" countdown on the display; people can still join.
   - *Audience:* extra people join to watch, send reactions and cheer for a player. The most-cheered
     player wins a Crowd Favorite award. The audience can join even when the room is locked.
+    An audience link (`/join?code=CODE&audience=1`) opens straight on "join the audience", and
+    the host can set an audience limit.
+  - *Spectators and streaming:* `/watch/CODE` lets anyone follow the game on their own screen
+    without joining. For streaming software, `/display/CODE?obs=1` is the big screen with no
+    buttons and sound that starts by itself (`&mute=1` for silence), and `/overlay/CODE` is a
+    see-through score strip to lay over a camera (`?pos=top`, `?reactions=0`). Streamer mode
+    keeps the room code and QR off the screen. The host copies all of these from Display.
   - *Doodle avatars:* an optional small drawing next to the name, shown on the join screen,
     podiums and winner screen.
   - *Winner gallery and shareable results:* the end screen shows everyone's card with awards and a

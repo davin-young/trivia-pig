@@ -19,6 +19,8 @@ export interface SocketData {
   userId?: string;
   hostRole?: HostRole;
   playerId?: string | null;
+  /** A display socket that is only watching: it is not the room's big screen. */
+  spectator?: boolean;
 }
 export type GameSocket = Socket<Record<string, never>, Record<string, never>, Record<string, never>, SocketData>;
 
@@ -465,7 +467,8 @@ export class LiveGame {
   presence(): PresenceView {
     const now = gameNow();
     const sockets = [...this.sockets.values()];
-    const displays = sockets.filter((s) => s.data.role === "display").length;
+    const displays = sockets.filter((s) => s.data.role === "display" && !s.data.spectator).length;
+    const spectators = sockets.filter((s) => s.data.role === "display" && s.data.spectator).length;
     const hostCounts = new Map<string, number>();
     for (const s of sockets) if (s.data.role === "host") hostCounts.set(s.data.hostRole ?? "HOST", (hostCounts.get(s.data.hostRole ?? "HOST") ?? 0) + 1);
     const online = new Set(sockets.filter((s) => s.data.role === "player" && s.data.playerId).map((s) => s.data.playerId!));
@@ -480,6 +483,7 @@ export class LiveGame {
     return {
       display: displays > 0 ? "online" : "offline",
       displays,
+      spectators,
       hosts: [...hostCounts].map(([role, count]) => ({ role, count })),
       players,
       saveFailing: this.saveFailures >= 2,

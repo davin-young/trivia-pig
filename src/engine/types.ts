@@ -35,6 +35,10 @@ export const settingsSchema = z.object({
   startCountdownSec: z.number().int().min(0).max(30).default(5),
   /** Let people watch as audience: they react and cheer but do not buzz or score. */
   audience: z.boolean().default(true),
+  /** Most people allowed in the audience (0 = no limit). */
+  maxAudience: z.number().int().min(0).max(100000).default(0),
+  /** Watch link: people can follow the game on their own screen without joining. */
+  spectators: z.boolean().default(true),
   /** Offer a small doodle avatar next to the drawn name. */
   avatars: z.boolean().default(true),
   /** Family friendly: drawings stay hidden on the big screen until the host approves them. */

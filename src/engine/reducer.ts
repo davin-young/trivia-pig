@@ -203,6 +203,7 @@ function reduce(s: GameState, entry: LogEntry, fx: Cue[]): boolean {
       if (a.audience) {
         // The audience can always get in, even when the room is locked or full.
         if (!s.settings.audience) return false;
+        if (s.settings.maxAudience > 0 && audienceMembers(s).length >= s.settings.maxAudience) return false;
         s.players[a.playerId] = {
           id: a.playerId,
           name: a.name,

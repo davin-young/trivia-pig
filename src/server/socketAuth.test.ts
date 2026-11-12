@@ -13,7 +13,14 @@ const deps: SocketAuthDeps = {
 
 describe("socket auth", () => {
   it("display needs no login", async () => {
-    await expect(authorizeSocket({ role: "display", code: "abcde" }, undefined, deps)).resolves.toMatchObject({ role: "display" });
+    await expect(authorizeSocket({ role: "display", code: "abcde" }, undefined, deps)).resolves.toMatchObject({ role: "display", spectator: false });
+  });
+
+  it("a watching display is a spectator, and the flag gives a player or host nothing", async () => {
+    await expect(authorizeSocket({ role: "display", code: "abcde", watch: true }, undefined, deps)).resolves.toMatchObject({ role: "display", spectator: true });
+    const player = await authorizeSocket({ role: "player", code: "abcde", watch: true }, undefined, deps);
+    expect(player).not.toHaveProperty("spectator");
+    await expect(authorizeSocket({ role: "host", code: "abcde", watch: true }, undefined, deps)).rejects.toThrow();
   });
 
   it("rejects unknown games and malformed handshakes", async () => {

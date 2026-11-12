@@ -19,7 +19,7 @@ export interface SocketAuthDeps {
 }
 
 export type SocketIdentity =
-  | { role: "display"; game: GameRef }
+  | { role: "display"; game: GameRef; spectator: boolean }
   | { role: "host"; game: GameRef; userId: string; hostRole: HostRole }
   | { role: "player"; game: GameRef; playerId: string | null };
 
@@ -38,7 +38,7 @@ export async function authorizeSocket(rawAuth: unknown, cookieHeader: string | u
   const game = await deps.findGame(code);
   if (!game) throw new SocketAuthError("Game not found");
 
-  if (role === "display") return { role, game };
+  if (role === "display") return { role, game, spectator: parsed.data.watch === true };
 
   if (role === "player") {
     const playerId = playerToken ? await deps.playerIdForToken(game.id, sha256(playerToken)) : null;

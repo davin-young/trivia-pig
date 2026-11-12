@@ -31,6 +31,8 @@ export function clearPlayerToken(code: string) {
 interface Options {
   role: "display" | "host" | "player";
   code: string;
+  /** Display role only: connect as a spectator (watch link, stream overlay). */
+  watch?: boolean;
   onFx?: (fx: FxEvent) => void;
   onRedirect?: (code: string) => void;
   onKicked?: (reason: string) => void;
@@ -40,7 +42,7 @@ interface Options {
  * One Socket.IO connection to a game. Auto-reconnects forever; the server
  * re-sends the full state on every (re)connect so the UI always resumes.
  */
-export function useGame({ role, code, onFx, onRedirect, onKicked }: Options) {
+export function useGame({ role, code, watch, onFx, onRedirect, onKicked }: Options) {
   const [view, setView] = useState<GameView | null>(null);
   const [presence, setPresence] = useState<PresenceView | null>(null);
   const [status, setStatus] = useState<ConnStatus>("connecting");
@@ -61,7 +63,7 @@ export function useGame({ role, code, onFx, onRedirect, onKicked }: Options) {
       reconnection: true,
       reconnectionDelay: 500,
       reconnectionDelayMax: 4000,
-      auth: (cb) => cb({ role, code: code.toUpperCase(), playerToken: role === "player" ? getPlayerToken(code) : undefined }),
+      auth: (cb) => cb({ role, code: code.toUpperCase(), playerToken: role === "player" ? getPlayerToken(code) : undefined, watch: role === "display" && watch ? true : undefined }),
     });
     socketRef.current = socket;
 
@@ -99,7 +101,7 @@ export function useGame({ role, code, onFx, onRedirect, onKicked }: Options) {
       socket.removeAllListeners();
       socket.disconnect();
     };
-  }, [role, code, epoch]);
+  }, [role, code, watch, epoch]);
 
   const emit = useCallback(<E extends ClientEvent>(event: E, payload: ClientPayload<E>): Promise<Ack> => {
     const socket = socketRef.current;
