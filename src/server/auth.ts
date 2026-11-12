@@ -39,20 +39,26 @@ export function normaliseEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
-/** First account on a fresh install, or anyone in ADMIN_EMAILS, is a super-admin. */
-export async function shouldBeAdmin(email: string): Promise<boolean> {
-  if (env.adminEmails.includes(email)) return true;
+/**
+ * First account on a fresh install, or anyone in ADMIN_EMAILS, is a super-admin.
+ *
+ * ADMIN_EMAILS only counts when the address is proven to belong to the person (a magic link
+ * they opened, or an identity provider that says the email is verified). Otherwise anyone
+ * could sign up with an admin's address before the admin does and be handed the server.
+ */
+export async function shouldBeAdmin(email: string, emailVerified: boolean): Promise<boolean> {
+  if (emailVerified && env.adminEmails.includes(email)) return true;
   return (await prisma.user.count()) === 0;
 }
 
-export async function createUser(email: string, password: string | null, name = ""): Promise<User> {
+export async function createUser(email: string, password: string | null, name = "", emailVerified = false): Promise<User> {
   const e = normaliseEmail(email);
   const user = await prisma.user.create({
     data: {
       email: e,
       name: name || e.split("@")[0],
       passwordHash: password ? await hashPassword(password) : null,
-      isAdmin: await shouldBeAdmin(e),
+      isAdmin: await shouldBeAdmin(e, emailVerified),
     },
   });
   // Every new host starts with the demo board so there's something to play right away.
@@ -79,7 +85,8 @@ export async function consumeMagicLink(token: string): Promise<User | null> {
   const existing = await prisma.user.findUnique({ where: { email: link.email } });
   if (existing) return existing;
   if (!env.allowSignup) return null;
-  return createUser(link.email, null);
+  // Opening the link proves the address is theirs.
+  return createUser(link.email, null, "", true);
 }
 
 export async function sendMail(to: string, subject: string, text: string): Promise<boolean> {

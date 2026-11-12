@@ -1,0 +1,295 @@
+/*
+ * Trivia Pig sign-in theme. Loaded after Keycloak's own stylesheet (keycloak.v2, PatternFly 5),
+ * so it only re-colours and re-shapes what is already there. Colours match the app
+ * (src/app/globals.css). No web fonts or other outside requests.
+ */
+:root,
+.login-pf,
+.pf-v5-theme-dark {
+  --tp-bg: #0b0f24;
+  --tp-panel: #141a38;
+  --tp-panel-2: #1c2349;
+  --tp-line: #2a3263;
+  --tp-board: #0a1a9e;
+  --tp-gold: #ffcf3f;
+  --tp-ink: #f6f7ff;
+  --tp-muted: rgba(246, 247, 255, 0.66);
+  --tp-display: "Oswald", "Arial Narrow", "Roboto Condensed", "Helvetica Neue Condensed", sans-serif;
+  --tp-sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+  /* PatternFly's own knobs, so every page (sign in, register, reset, errors) follows along. */
+  --pf-v5-global--BackgroundColor--100: var(--tp-panel);
+  --pf-v5-global--BackgroundColor--200: var(--tp-bg);
+  --pf-v5-global--Color--100: var(--tp-ink);
+  --pf-v5-global--Color--200: var(--tp-muted);
+  --pf-v5-global--link--Color: var(--tp-gold);
+  --pf-v5-global--link--Color--hover: #ffe08a;
+  --pf-v5-global--primary-color--100: var(--tp-gold);
+  --pf-v5-global--primary-color--200: #ffe08a;
+  --pf-v5-global--BorderColor--100: var(--tp-line);
+  --pf-v5-global--FontFamily--text: var(--tp-sans);
+  --pf-v5-global--FontFamily--heading: var(--tp-display);
+  color-scheme: dark;
+}
+
+html.login-pf,
+html.login-pf body,
+#keycloak-bg {
+  min-height: 100vh;
+  background-color: var(--tp-bg);
+  background-image:
+    radial-gradient(60vmax 40vmax at 12% 0%, color-mix(in srgb, var(--tp-board) 55%, transparent), transparent 70%),
+    radial-gradient(50vmax 40vmax at 100% 100%, color-mix(in srgb, var(--tp-board) 35%, transparent), transparent 70%);
+  background-attachment: fixed;
+  color: var(--tp-ink);
+  font-family: var(--tp-sans);
+}
+
+.pf-v5-c-login {
+  background: none;
+  padding: 24px 16px;
+}
+.pf-v5-c-login__container {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: 100%;
+  max-width: 440px;
+  margin-inline: auto;
+  grid-template-areas: none;
+}
+
+/* ---- brand: the realm name with the pig, in the app's condensed lettering */
+.pf-v5-c-login__header {
+  padding: 0;
+  text-align: center;
+}
+#kc-header-wrapper {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--tp-ink);
+  font-family: var(--tp-display);
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.1;
+  text-transform: uppercase;
+  white-space: normal;
+}
+#kc-header-wrapper::before {
+  content: "🐷";
+  font-size: 2.4rem;
+  line-height: 1;
+}
+
+/* ---- the card */
+.pf-v5-c-login__main {
+  border: 1px solid var(--tp-line);
+  border-radius: 16px;
+  background: var(--tp-panel);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+  color: var(--tp-ink);
+  overflow: hidden;
+}
+.pf-v5-c-login__main-header {
+  padding: 24px 24px 4px;
+  border: 0;
+}
+.pf-v5-c-login__main-body {
+  padding: 16px 24px 24px;
+}
+.pf-v5-c-login__main-footer {
+  padding: 0;
+}
+.pf-v5-c-login__main-footer-band {
+  border-top: 1px solid var(--tp-line);
+  background: var(--tp-panel-2);
+  color: var(--tp-muted);
+  padding: 14px 24px;
+  text-align: center;
+}
+#kc-page-title,
+.pf-v5-c-title {
+  color: var(--tp-ink);
+  font-family: var(--tp-display);
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+/* ---- fields */
+.pf-v5-c-form__label-text {
+  color: var(--tp-muted);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+.pf-v5-c-form-control {
+  --pf-v5-c-form-control--BackgroundColor: var(--tp-bg);
+  --pf-v5-c-form-control--Color: var(--tp-ink);
+  --pf-v5-c-form-control--before--BorderColor: var(--tp-line);
+  --pf-v5-c-form-control--after--BorderBottomColor: var(--tp-line);
+  --pf-v5-c-form-control--hover--after--BorderBottomColor: var(--tp-gold);
+  --pf-v5-c-form-control--focus--after--BorderBottomColor: var(--tp-gold);
+  border-radius: 10px;
+  background: var(--tp-bg);
+  color: var(--tp-ink);
+}
+.pf-v5-c-form-control::before,
+.pf-v5-c-form-control::after {
+  border-radius: 10px;
+}
+.pf-v5-c-form-control > input,
+.pf-v5-c-form-control > select,
+.pf-v5-c-form-control > textarea {
+  min-height: 44px;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--tp-ink);
+  font-size: 1rem;
+}
+.pf-v5-c-form-control > input:-webkit-autofill {
+  -webkit-text-fill-color: var(--tp-ink);
+  box-shadow: 0 0 0 100px var(--tp-bg) inset;
+  caret-color: var(--tp-ink);
+}
+.pf-v5-c-form-control > input:focus-visible {
+  outline: 2px solid var(--tp-gold);
+  outline-offset: 1px;
+}
+.pf-v5-c-input-group {
+  gap: 6px;
+}
+
+/* ---- buttons */
+.pf-v5-c-button {
+  border-radius: 12px;
+  font-weight: 700;
+}
+.pf-v5-c-button.pf-m-primary {
+  --pf-v5-c-button--m-primary--BackgroundColor: var(--tp-gold);
+  --pf-v5-c-button--m-primary--Color: #000;
+  --pf-v5-c-button--m-primary--hover--BackgroundColor: #ffe08a;
+  --pf-v5-c-button--m-primary--hover--Color: #000;
+  --pf-v5-c-button--m-primary--focus--BackgroundColor: #ffe08a;
+  --pf-v5-c-button--m-primary--focus--Color: #000;
+  --pf-v5-c-button--m-primary--active--BackgroundColor: #f2bd1d;
+  --pf-v5-c-button--m-primary--active--Color: #000;
+  min-height: 48px;
+  background: var(--tp-gold);
+  color: #000;
+  font-size: 1.05rem;
+}
+.pf-v5-c-button.pf-m-primary:hover,
+.pf-v5-c-button.pf-m-primary:focus {
+  background: #ffe08a;
+  color: #000;
+}
+.pf-v5-c-button.pf-m-primary:focus-visible,
+.pf-v5-c-button.pf-m-control:focus-visible,
+.pf-v5-c-button.pf-m-secondary:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--tp-ink);
+  outline-offset: 2px;
+}
+.pf-v5-c-button.pf-m-control,
+.pf-v5-c-button.pf-m-secondary,
+.pf-v5-c-button.pf-m-link {
+  --pf-v5-c-button--m-control--BackgroundColor: var(--tp-bg);
+  --pf-v5-c-button--m-control--Color: var(--tp-ink);
+  --pf-v5-c-button--m-control--after--BorderColor: var(--tp-line);
+  --pf-v5-c-button--m-secondary--Color: var(--tp-ink);
+  --pf-v5-c-button--m-secondary--after--BorderColor: var(--tp-line);
+  background: var(--tp-bg);
+  color: var(--tp-ink);
+}
+.pf-v5-c-button.pf-m-control {
+  min-width: 44px;
+  min-height: 44px;
+  border-radius: 10px;
+}
+.pf-v5-c-button.pf-m-control::after,
+.pf-v5-c-button.pf-m-secondary::after {
+  border-radius: inherit;
+}
+
+/* ---- small things */
+.pf-v5-c-check__label,
+.pf-v5-c-helper-text__item-text,
+.pf-v5-c-login__main-footer-band-item,
+#kc-registration span,
+#kc-info-wrapper {
+  color: var(--tp-muted);
+}
+.pf-v5-c-check__input {
+  accent-color: var(--tp-gold);
+  width: 18px;
+  height: 18px;
+}
+a,
+.pf-v5-c-login__main-footer-band a {
+  color: var(--tp-gold);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+a:hover {
+  color: #ffe08a;
+}
+
+/* ---- messages (wrong password, session expired, and so on) */
+.pf-v5-c-alert {
+  --pf-v5-c-alert--BackgroundColor: var(--tp-panel-2);
+  --pf-v5-c-alert__title--Color: var(--tp-ink);
+  border: 1px solid var(--tp-line);
+  border-radius: 10px;
+  background: var(--tp-panel-2);
+  box-shadow: none;
+  color: var(--tp-ink);
+}
+.pf-v5-c-alert.pf-m-danger {
+  border-color: #ef4444;
+  background: rgba(239, 68, 68, 0.14);
+}
+.pf-v5-c-alert.pf-m-success {
+  border-color: #22c55e;
+  background: rgba(34, 197, 94, 0.14);
+}
+.pf-v5-c-alert.pf-m-warning {
+  border-color: #f59e0b;
+  background: rgba(245, 158, 11, 0.14);
+}
+.pf-v5-c-alert__title,
+.pf-v5-c-alert__description,
+.pf-v5-c-helper-text__item.pf-m-error .pf-v5-c-helper-text__item-text,
+.pf-v5-c-form__helper-text .pf-m-error {
+  color: #fecaca;
+}
+.pf-v5-c-alert.pf-m-success .pf-v5-c-alert__title {
+  color: #bbf7d0;
+}
+
+/* Language picker and "try another way" menus, when a realm turns them on. */
+.pf-v5-c-menu,
+.pf-v5-c-select__menu,
+.pf-v5-c-dropdown__menu {
+  border: 1px solid var(--tp-line);
+  background: var(--tp-panel-2);
+  color: var(--tp-ink);
+}
+
+@media (max-width: 480px) {
+  .pf-v5-c-login {
+    padding: 16px 12px;
+  }
+  .pf-v5-c-login__main-header {
+    padding: 20px 18px 4px;
+  }
+  .pf-v5-c-login__main-body {
+    padding: 14px 18px 20px;
+  }
+  #kc-header-wrapper {
+    font-size: 1.7rem;
+  }
+}
