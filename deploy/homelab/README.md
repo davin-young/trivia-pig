@@ -141,6 +141,11 @@ APP_PULL_POLICY=always
 sudo ./scripts/install-autodeploy.sh
 ```
 
+The publish workflow signs every image with its own GitHub identity (cosign, keyless). To make
+the host refuse anything else, for example an image pushed with a stolen registry token, also set
+`VERIFY_IMAGE_SIGNER` in `.env` (the example file has the pattern). An image that fails the
+check is not deployed, and you get a notification.
+
 Without `APP_IMAGE` the same timer builds from the git checkout instead (it then follows `main`
 directly, without waiting for CI). `sudo ./scripts/install-autodeploy.sh remove` turns it off.
 

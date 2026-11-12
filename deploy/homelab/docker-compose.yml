@@ -154,7 +154,7 @@ services:
   #   auth.triviapig.lol   → http://keycloak:8080   (only if you use the keycloak profile)
   cloudflared:
     <<: *defaults
-    image: cloudflare/cloudflared:2025.4.2
+    image: cloudflare/cloudflared:2026.10.7
     command: tunnel --no-autoupdate run
     environment:
       TUNNEL_TOKEN: ${TUNNEL_TOKEN}
@@ -168,7 +168,7 @@ services:
   keycloak:
     <<: *defaults
     profiles: [keycloak]
-    image: quay.io/keycloak/keycloak:26.2
+    image: quay.io/keycloak/keycloak:26.8
     command: start --import-realm
     environment:
       KC_DB: postgres
@@ -222,7 +222,7 @@ services:
     command: server /data
     environment:
       MINIO_ROOT_USER: ${S3_ACCESS_KEY_ID:-trivia}
-      MINIO_ROOT_PASSWORD: ${S3_SECRET_ACCESS_KEY:-change-me-please}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_ACCESS_KEY:-}
     volumes:
       - ./data/minio:/data
     healthcheck:
@@ -245,7 +245,7 @@ services:
       mc mb --ignore-existing local/$${BUCKET}"
     environment:
       MINIO_USER: ${S3_ACCESS_KEY_ID:-trivia}
-      MINIO_PASS: ${S3_SECRET_ACCESS_KEY:-change-me-please}
+      MINIO_PASS: ${S3_SECRET_ACCESS_KEY:-}
       BUCKET: ${S3_BUCKET:-trivia}
     networks: [internal]
 

@@ -49,7 +49,28 @@ current=""
 if [ -n "$APP_IMAGE" ]; then
   docker compose pull -q app || log "WARNING: could not pull $APP_IMAGE"
   target="$(docker image inspect -f '{{.Id}}' "$APP_IMAGE" 2>/dev/null || true)"
-  [ -n "$target" ] && [ "$target" != "$current" ] && : > .deploy-pending
+  if [ -n "$target" ] && [ "$target" != "$current" ]; then
+    # Optional: only deploy an image that the repository's publish workflow signed.
+    SIGNER="$(envval VERIFY_IMAGE_SIGNER)"
+    # (An image that was already refused is not checked, or reported, again every two minutes.)
+    if [ -n "$SIGNER" ] && [ "$(cat .deploy-failed 2>/dev/null || true)" != "$target" ]; then
+      digest="$(docker image inspect -f '{{index .RepoDigests 0}}' "$APP_IMAGE" 2>/dev/null || true)"
+      auth=""
+      [ -f "${HOME:-/root}/.docker/config.json" ] && auth="-v ${HOME:-/root}/.docker/config.json:/tmp/docker/config.json:ro -e DOCKER_CONFIG=/tmp/docker"
+      # shellcheck disable=SC2086
+      if [ -z "$digest" ] || ! docker run --rm $auth "${COSIGN_IMAGE:-ghcr.io/sigstore/cosign/cosign:v3.1.4}" verify \
+          --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+          --certificate-identity-regexp "$SIGNER" "$digest" >/dev/null 2>&1; then
+        log "ERROR: $APP_IMAGE is not signed by $SIGNER; not deploying it"
+        echo "$target" > .deploy-failed
+        rm -f .deploy-pending
+        ./scripts/notify.sh "Trivia Pig update refused" "The new image's signature could not be verified, so it was not deployed. See: journalctl -u triviapig-deploy -n 100" urgent >/dev/null 2>&1 || true
+        exit 1
+      fi
+      note "signature verified for $digest"
+    fi
+    : > .deploy-pending
+  fi
 else
   target="$after"
 fi
