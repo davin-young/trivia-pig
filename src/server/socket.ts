@@ -233,6 +233,9 @@ const hostHandlers: Partial<Record<ClientEvent, Handler>> = {
     if (socket.data.hostRole === "SCOREKEEPER") return { ok: false, error: "Not allowed" };
     return game.backToLobby() ? { ok: true } : { ok: false, error: "The game is already under way. Use History to undo steps." };
   },
+  "host:minigame": (game, _socket, payload: { kind?: import("@/shared/minigames").LobbyGameKind; mix?: boolean; restart?: boolean; stop?: boolean }) => {
+    return game.miniControl(payload) ? { ok: true } : { ok: false, error: "Lobby games are off, or the game has started" };
+  },
   "host:sound": (game, socket, payload: { id: string }) => {
     if (socket.data.hostRole === "SCOREKEEPER") return { ok: false, error: "Not allowed" };
     game.emitSound(payload.id);
@@ -385,11 +388,12 @@ export const playerHandlers: Partial<Record<ClientEvent, Handler>> = {
     );
     return res.ok ? { ok: true } : { ok: false, error: "Answers are closed" };
   },
-  "player:tap": (game, socket, payload: { n: number }) => {
+  "player:tap": (game, socket, payload: { n?: number; pick?: number }) => {
     const pid = socket.data.playerId;
     const p = pid ? game.state.players[pid] : undefined;
     if (!pid || !p || p.removed || p.audience) return { ok: false, error: "Join first" };
-    return game.raceTap(pid, payload.n) ? { ok: true } : { ok: false, error: "No race right now" };
+    const data = game.miniTap(pid, payload);
+    return data ? { ok: true, data } : { ok: false, error: "No lobby game right now" };
   },
   "player:react": (game, socket, payload: { emoji: string }) => {
     const pid = socket.data.playerId;

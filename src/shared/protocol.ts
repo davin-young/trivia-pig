@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { LOBBY_GAMES } from "./minigames";
 import { drawingSchema } from "./strokes";
 import { settingsSchema } from "@/engine/types";
 
@@ -109,6 +110,8 @@ export const clientEvents = {
   "host:undo": z.object({ seq: z.number().int().positive(), undone: z.boolean().default(true) }),
   "host:undoLast": z.object({}),
   "host:backToLobby": z.object({}),
+  /** Lobby games: pick one, switch shuffling, start a fresh round, or stop the round. */
+  "host:minigame": z.object({ kind: z.enum(LOBBY_GAMES).optional(), mix: z.boolean().optional(), restart: z.boolean().optional(), stop: z.boolean().optional() }),
   "host:sound": z.object({ id: z.enum(SOUNDBOARD) }),
   "player:join": z.object({
     name: z.string().trim().min(1).max(24),
@@ -127,8 +130,8 @@ export const clientEvents = {
   "player:seats": z.object({}),
   "player:reclaim": z.object({ playerId: id }),
   "player:buzz": z.object({}),
-  /** Pig race in the lobby: taps since the last message. */
-  "player:tap": z.object({ n: z.number().int().min(1).max(10) }),
+  /** Lobby games: taps since the last message, or (Count the pigs) the number picked. */
+  "player:tap": z.object({ n: z.number().int().min(1).max(10).optional(), pick: z.number().int().min(0).max(99).optional() }),
   "player:finalWager": z.object({ amount: z.number().int().min(0).max(10_000_000) }),
   "player:finalAnswer": z.object({ drawing: drawingSchema.nullable(), typed: z.string().max(200).optional() }),
   "player:allPlayAnswer": z.object({ drawing: drawingSchema.nullable(), typed: z.string().max(200).optional() }),
@@ -154,17 +157,6 @@ export interface PresenceView {
 
 export type FxEvent = { cue: string; playerId?: string; id?: string };
 
-/** The pig race in the lobby (null when no race is on). Sent as the "race" event. */
-export interface RaceView {
-  id: number;
-  phase: "countdown" | "running" | "done";
-  /** Server time the race starts (the countdown runs until then). */
-  startsAt: number;
-  goal: number;
-  /** The leading pigs, best first. */
-  lanes: { id: string; taps: number; wins: number }[];
-  racers: number;
-  winnerId: string | null;
-}
+export type { MiniView } from "./minigames";
 
 export const TEAM_COLORS = ["#ff5d73", "#4ff0b1", "#ffd23f", "#7bdff2", "#c792ff", "#ff8c42", "#b8f35d", "#ff7ad9", "#f2e9dc", "#ffffff"];
