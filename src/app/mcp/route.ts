@@ -1,4 +1,5 @@
 import { apiAuth } from "@/server/apiTokens";
+import { OAUTH_CORS, wwwAuthenticate } from "@/server/oauth";
 import { BoardApiError, createBoard, getBoard, listBoards, reviewBoard, updateBoard } from "@/server/boardApi";
 import { APP_NAME } from "@/shared/app";
 import { EXAMPLE_BOARD, boardJsonSchema } from "@/shared/simpleBoard";
@@ -8,7 +9,8 @@ import { EXAMPLE_BOARD, boardJsonSchema } from "@/shared/simpleBoard";
  * the caller's boards. Stateless: every POST is one JSON-RPC message (or a batch) answered
  * with plain JSON, and there are no sessions or server-sent events.
  *
- * Connect with the URL and a token from Dashboard > Connect your AI:
+ * Connect with the URL alone and sign in when the app asks (OAuth, see src/server/oauth.ts),
+ * or with a personal token from the AI page:
  *   Authorization: Bearer tp_...
  *
  * It exposes boards only. Games in progress, their answers, other hosts' boards and the
@@ -135,13 +137,32 @@ async function handle(userId: string, msg: Rpc): Promise<object | null> {
   }
 }
 
+/**
+ * Any site may call this: it only ever answers a request that carries a token in the
+ * Authorization header, and never looks at cookies, so there is nothing to borrow.
+ */
+function withCors(res: Response): Response {
+  const headers = new Headers(res.headers);
+  for (const [k, v] of Object.entries(OAUTH_CORS)) headers.set(k, v);
+  headers.set("access-control-allow-methods", "POST, OPTIONS");
+  headers.set("access-control-expose-headers", "www-authenticate");
+  return new Response(res.body, { status: res.status, headers });
+}
+
 export async function POST(req: Request) {
+  return withCors(await post(req));
+}
+export function OPTIONS() {
+  return withCors(new Response(null, { status: 204 }));
+}
+
+async function post(req: Request): Promise<Response> {
   // A token is required for everything, including the handshake: there is nothing public here,
-  // and a browser session is deliberately not accepted.
+  // and a browser session is deliberately not accepted. The 401 tells an app where to sign in.
   if (!req.headers.get("authorization")) {
-    return new Response(JSON.stringify(rpcError(null, -32001, "Send your token as: Authorization: Bearer tp_...")), {
+    return new Response(JSON.stringify(rpcError(null, -32001, "Sign in, or send a token as: Authorization: Bearer tp_...")), {
       status: 401,
-      headers: { "content-type": "application/json", "www-authenticate": 'Bearer realm="Trivia Pig"' },
+      headers: { "content-type": "application/json", "www-authenticate": wwwAuthenticate() },
     });
   }
   const auth = await apiAuth(req);
@@ -170,6 +191,6 @@ export async function POST(req: Request) {
 }
 
 /** No server-initiated stream and no sessions to end. */
-const notAllowed = () => new Response(null, { status: 405, headers: { allow: "POST" } });
+const notAllowed = () => withCors(new Response(null, { status: 405, headers: { allow: "POST" } }));
 export const GET = notAllowed;
 export const DELETE = notAllowed;
