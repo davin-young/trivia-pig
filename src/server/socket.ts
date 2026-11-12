@@ -1,3 +1,4 @@
+import { gameNow } from "@/shared/clock";
 import type { Server, Socket } from "socket.io";
 import { nanoid } from "nanoid";
 import { clientEvents, hostIntentSchema, SCOREKEEPER_INTENTS, type Ack, type ClientEvent } from "@/shared/protocol";
@@ -99,9 +100,9 @@ export function attachSocketServer(io: Server, deps: SocketAuthDeps = prismaSock
       const tracker = new RttTracker();
       rtts.set(socket, tracker);
       const probe = () => {
-        const sent = Date.now();
+        const sent = gameNow();
         raw.timeout(3000).emit("rtt", (err: Error | null) => {
-          if (!err) tracker.add(Date.now() - sent);
+          if (!err) tracker.add(gameNow() - sent);
         });
       };
       probe();
@@ -192,7 +193,7 @@ const hostHandlers: Partial<Record<ClientEvent, Handler>> = {
 
 const lastDrawingAt = new WeakMap<object, number>();
 function drawingThrottle(socket: GameSocket): boolean {
-  const now = Date.now();
+  const now = gameNow();
   const last = lastDrawingAt.get(socket) ?? 0;
   if (now - last < 2000) return false;
   lastDrawingAt.set(socket, now);
@@ -262,7 +263,7 @@ const playerHandlers: Partial<Record<ClientEvent, Handler>> = {
   "player:cheer": (game, socket, payload: { contestantId: string | null }) => {
     const pid = socket.data.playerId;
     if (!pid) return { ok: false, error: "Join first" };
-    const now = Date.now();
+    const now = gameNow();
     if (now - (lastCheerAt.get(socket) ?? 0) < 800) return { ok: false, error: "Slow down" };
     lastCheerAt.set(socket, now);
     return game.dispatch({ type: "player/cheer", playerId: pid, contestantId: payload.contestantId }, `player:${pid}`).ok ? { ok: true } : { ok: false, error: "Couldn't change your pick" };
@@ -281,7 +282,7 @@ const playerHandlers: Partial<Record<ClientEvent, Handler>> = {
   "player:buzz": async (game, socket) => {
     const pid = socket.data.playerId;
     if (!pid) return { ok: false, error: "Join first" };
-    const at = Date.now();
+    const at = gameNow();
     const accepted = await game.buzz(pid, rtts.get(socket)?.value ?? 0);
     const c = game.state.clue;
     const first = c?.answering === pid;
@@ -318,7 +319,7 @@ const playerHandlers: Partial<Record<ClientEvent, Handler>> = {
     const pid = socket.data.playerId;
     if (!pid || !game.state.players[pid] || game.state.players[pid].removed) return { ok: false, error: "Join first" };
     if (!game.state.settings.reactions) return { ok: false, error: "Reactions are off" };
-    const now = Date.now();
+    const now = gameNow();
     if (now - (lastReactAt.get(socket) ?? 0) < 600) return { ok: false, error: "Slow down" };
     lastReactAt.set(socket, now);
     game.emitReaction(pid, payload.emoji);

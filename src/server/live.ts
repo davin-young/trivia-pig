@@ -1,3 +1,4 @@
+import { gameNow } from "@/shared/clock";
 import type { Server, Socket } from "socket.io";
 import type { HostRole, Prisma } from "@prisma/client";
 import { nanoid } from "nanoid";
@@ -65,7 +66,7 @@ export class LiveGame {
 
   // ------------------------------------------------------------- dispatching
 
-  dispatch(action: GameAction, by: string, at = Date.now()): { ok: boolean; fx: Cue[] } {
+  dispatch(action: GameAction, by: string, at = gameNow()): { ok: boolean; fx: Cue[] } {
     const res = this.history.dispatch(action, by, at);
     if (!res.ok) return { ok: false, fx: [] };
     this.afterChange(res.fx, action);
@@ -79,7 +80,7 @@ export class LiveGame {
    * answering) buzzes are applied immediately.
    */
   buzz(playerId: string, rttMs: number): Promise<boolean> {
-    const now = Date.now();
+    const now = gameNow();
     const c = this.state.clue;
     if (!this.state.settings.fairBuzz || !c || c.stage !== "open") {
       return Promise.resolve(this.dispatch({ type: "player/buzz", playerId }, `player:${playerId}`, now).ok);
@@ -157,20 +158,20 @@ export class LiveGame {
     const c = this.state.clue;
     if (c && c.stage === "reading" && c.autoUnlockAt && !c.allPlay && !c.dailyDouble && !this.state.paused) {
       const id = c.id;
-      this.later("autoUnlock", Math.max(0, c.autoUnlockAt - Date.now()), () => {
+      this.later("autoUnlock", Math.max(0, c.autoUnlockAt - gameNow()), () => {
         const cur = this.state.clue;
         if (cur?.id === id && cur.stage === "reading" && cur.autoUnlockAt && !this.state.paused) this.dispatch({ type: "buzzers/unlock" }, "system");
       });
     } else this.cancel("autoUnlock");
     if (c?.allPlay?.stage === "writing") {
       const id = c.id;
-      this.later("allPlay", Math.max(0, c.allPlay.endsAt - Date.now() + 1600), () => {
+      this.later("allPlay", Math.max(0, c.allPlay.endsAt - gameNow() + 1600), () => {
         if (this.state.clue?.id === id && this.state.clue.allPlay?.stage === "writing") this.dispatch({ type: "allPlay/close" }, "system");
       });
     } else this.cancel("allPlay");
     const startingAt = this.state.phase === "lobby" ? this.state.startingAt : null;
     if (startingAt) {
-      this.later("start", Math.max(0, startingAt - Date.now()), () => {
+      this.later("start", Math.max(0, startingAt - gameNow()), () => {
         if (this.state.phase === "lobby" && this.state.startingAt === startingAt) this.startNow("system");
       });
     } else this.cancel("start");
@@ -191,7 +192,7 @@ export class LiveGame {
     const s = this.state;
     if (s.phase !== "lobby") return false;
     const sec = s.settings.startCountdownSec;
-    if (sec > 0 && !s.startingAt && !now) return this.dispatch({ type: "game/countdown", endsAt: Date.now() + sec * 1000 }, by).ok;
+    if (sec > 0 && !s.startingAt && !now) return this.dispatch({ type: "game/countdown", endsAt: gameNow() + sec * 1000 }, by).ok;
     return this.startNow(by);
   }
 
@@ -259,7 +260,7 @@ export class LiveGame {
     }
     if (c?.allPlay?.stage === "writing") {
       for (const b of bots) {
-        plan(`allplay:${c.id}:${b.id}`, 2000, Math.max(2500, Math.min(9000, c.allPlay.endsAt - Date.now() - 500)), () => {
+        plan(`allplay:${c.id}:${b.id}`, 2000, Math.max(2500, Math.min(9000, c.allPlay.endsAt - gameNow() - 500)), () => {
           this.dispatch({ type: "player/allPlayAnswer", playerId: b.id, drawing: null, typed: BOT_GUESSES[Math.floor(Math.random() * BOT_GUESSES.length)] }, `player:${b.id}`);
         });
       }
@@ -287,7 +288,7 @@ export class LiveGame {
   scheduleFinalClose() {
     const f = this.state.final;
     if (!f || f.stage !== "writing" || f.endsAt === null) return;
-    this.later("final", Math.max(0, f.endsAt - Date.now() + 1600), () => {
+    this.later("final", Math.max(0, f.endsAt - gameNow() + 1600), () => {
       if (this.state.final?.stage === "writing") this.dispatch({ type: "final/close" }, "system");
     });
   }
@@ -443,7 +444,7 @@ export class LiveGame {
     this.sockets.delete(socket.id);
     const pid = socket.data.playerId;
     if (pid && ![...this.sockets.values()].some((s) => s.data.playerId === pid)) {
-      this.playerLastSeen.set(pid, Date.now());
+      this.playerLastSeen.set(pid, gameNow());
       this.later(`presence:${pid}`, RECONNECT_GRACE_MS + 100, () => this.broadcastPresence());
     }
     this.broadcastPresence();
@@ -459,7 +460,7 @@ export class LiveGame {
   }
 
   presence(): PresenceView {
-    const now = Date.now();
+    const now = gameNow();
     const sockets = [...this.sockets.values()];
     const displays = sockets.filter((s) => s.data.role === "display").length;
     const hostCounts = new Map<string, number>();

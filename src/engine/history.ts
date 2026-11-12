@@ -1,3 +1,4 @@
+import { gameNow } from "@/shared/clock";
 import { applyAction, replay, type Cue } from "./reducer";
 import type { GameAction, GameState, LogEntry, Setup } from "./types";
 
@@ -22,7 +23,7 @@ export class GameHistory {
   }
 
   /** Apply a resolved action. Rejected actions are not recorded. */
-  dispatch(action: GameAction, by: string, at: number = Date.now()): { ok: boolean; entry?: LogEntry; fx: Cue[] } {
+  dispatch(action: GameAction, by: string, at: number = gameNow()): { ok: boolean; entry?: LogEntry; fx: Cue[] } {
     const entry: LogEntry = { seq: this.nextSeq, at, by, action };
     const fx: Cue[] = [];
     const ok = applyAction(this.state, entry, fx);

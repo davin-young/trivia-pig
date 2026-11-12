@@ -86,11 +86,12 @@ export function startJanitor(intervalMs = 60 * 60_000): NodeJS.Timeout {
 export function startWatchdog(stallMs = 45_000): () => void {
   const worker = new Worker(
     `const { parentPort, workerData } = require("node:worker_threads");
-     let last = Date.now();
-     parentPort.on("message", () => { last = Date.now(); });
+     // performance.now() is steady; Date.now() can jump when the system clock is stepped.
+     let last = performance.now();
+     parentPort.on("message", () => { last = performance.now(); });
      setInterval(() => {
-       if (Date.now() - last > workerData.stallMs) {
-         console.error("[watchdog] event loop stalled for " + (Date.now() - last) + " ms; exiting so the supervisor restarts the app");
+       if (performance.now() - last > workerData.stallMs) {
+         console.error("[watchdog] event loop stalled for " + (performance.now() - last) + " ms; exiting so the supervisor restarts the app");
          process.kill(process.pid, "SIGKILL");
        }
      }, 5000);`,

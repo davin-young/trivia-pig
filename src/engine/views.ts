@@ -1,3 +1,4 @@
+import { gameNow } from "@/shared/clock";
 import { findClue, isPlayable, type BoardContent, type Media } from "@/shared/board";
 import type { Drawing } from "@/shared/strokes";
 import type { BoardTheme } from "@/shared/theme";
@@ -344,7 +345,7 @@ export function buildView(
     startingAt: s.phase === "lobby" ? s.startingAt : null,
     crowd: { count: watchers.length, cheers, ...(isHost ? { members: watchers.map((w) => ({ id: w.id, name: w.name })) } : {}) },
     version: s.version,
-    serverNow: ctx.now ?? Date.now(),
+    serverNow: ctx.now ?? gameNow(),
     awards: s.phase === "finished" ? computeAwards(s) : null,
   };
 
