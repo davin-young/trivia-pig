@@ -116,7 +116,10 @@ sound → Final Jeopardy → builder → media → dashboard/history/post-game �
      `get_board_format`, `list_boards`, `get_board`, `check_board`, `create_board`, `update_board`.
   A token reaches its owner's own boards and nothing else: not games, not team mates' boards,
   not the account or the token list. `scripts/api-smoke.mjs` checks all of that end to end.
-  Not done: OAuth sign-in for MCP apps that cannot send a token header.
+  4. *Sign-in for MCP apps* (`src/server/oauth.ts`, done 2026-11-12): add the `/mcp` address as a
+     connector and press Allow. OAuth 2.1 with public clients only, dynamic client registration,
+     PKCE S256 required, one-hour access tokens and rotating refresh tokens, all stored as hashes.
+     Same reach as a personal token. `scripts/oauth-smoke.mjs` walks the whole flow.
 - [ ] Set `ALERT_URL` on the homelab so the monitor's notifications reach a phone.
 - [ ] Set NTP on the ESXi host (its clock was about 6 minutes fast on 2026-11-12).
 - [ ] Submit `sitemap.xml` in Google Search Console.

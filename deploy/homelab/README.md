@@ -59,6 +59,28 @@ After it starts, sign in to `https://auth.triviapig.lol/admin` with `KEYCLOAK_AD
 **trivia-admin**. To stop open sign-ups, turn off Realm settings → Login → *User registration*.
 To require email verification, configure SMTP under Realm settings → Email.
 
+**Keep the admin console off the internet.** Only the `trivia` realm needs to be public. Once
+you have given yourself the role above:
+1. Publish Keycloak on your LAN and tell it where its admin console lives, in a
+   `docker-compose.override.yml` next to the compose file:
+   ```yaml
+   services:
+     keycloak:
+       ports:
+         - "192.168.0.17:3091:8080"                       # your Docker host's LAN address
+       environment:
+         KC_HOSTNAME_ADMIN: http://192.168.0.17:3091
+   ```
+2. In the proxy or tunnel in front of `auth.<your domain>`, route only `/realms/trivia/` and
+   `/resources/` to Keycloak. Everything else (`/admin`, `/realms/master`, `/metrics`,
+   `/health`) should not be routed. A Traefik rule:
+   ``Host(`auth.triviapig.lol`) && (PathPrefix(`/realms/trivia/`) || PathPrefix(`/resources/`))``
+3. Administer Keycloak at `http://<LAN address>:3091/admin` and turn on two-step sign-in for
+   the admin account (Users → admin → Required user actions → *Configure OTP*).
+
+If you lose the authenticator, make a temporary admin from the Docker host:
+`docker compose exec keycloak /opt/keycloak/bin/kc.sh bootstrap-admin user`.
+
 **Option B: Keycloak you already run.** Create a client in any realm:
 - Client type OpenID Connect, **Client authentication: On**, Standard flow only
 - Valid redirect URI `https://triviapig.lol/api/auth/oidc/callback`

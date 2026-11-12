@@ -113,6 +113,45 @@ export function PasteBoard() {
 type TokenRow = { id: string; name: string; hint: string; lastUsedAt: string | null; createdAt: string };
 
 /** Create, see and revoke personal tokens, with ready-to-paste setup for the new one. */
+interface AppRow {
+  id: string;
+  name: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+}
+
+/** Apps connected by signing in (OAuth), with a button to disconnect each one. */
+export function ConnectedApps() {
+  const [apps, setApps] = useState<AppRow[] | null>(null);
+  async function load() {
+    const r = await fetch("/api/me/apps");
+    if (r.ok) setApps(((await r.json()) as { apps: AppRow[] }).apps);
+  }
+  useEffect(() => {
+    void load();
+  }, []);
+  async function disconnect(a: AppRow) {
+    if (!confirm(`Disconnect "${a.name}"? It stops working at once and has to sign in again.`)) return;
+    await fetch(`/api/me/apps/${a.id}`, { method: "DELETE" });
+    void load();
+  }
+  if (!apps) return null;
+  if (!apps.length) return <p className="text-sm text-white/50">No apps connected by sign-in yet.</p>;
+  return (
+    <ul className="flex flex-col gap-1.5">
+      {apps.map((a) => (
+        <li key={a.id} className="flex items-center gap-3 rounded-lg bg-white/5 px-3 py-2 text-sm">
+          <span className="min-w-0 flex-1 truncate font-semibold">{a.name}</span>
+          <span className="hidden text-xs text-white/50 sm:inline">
+            connected {new Date(a.createdAt).toLocaleDateString()} · {a.lastUsedAt ? `used ${new Date(a.lastUsedAt).toLocaleDateString()}` : "never used"}
+          </span>
+          <button className="rounded bg-white/10 px-2.5 py-1 text-xs font-semibold hover:bg-red-600" onClick={() => disconnect(a)}>Disconnect</button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export function TokenManager({ origin }: { origin: string }) {
   const [tokens, setTokens] = useState<TokenRow[] | null>(null);
   const [name, setName] = useState("");

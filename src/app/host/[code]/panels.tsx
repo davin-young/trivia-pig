@@ -331,6 +331,16 @@ export function SettingsPanel() {
         </div>
         {!lobby && <span className="text-xs text-white/40">Mode can only change in the lobby.</span>}
       </Field>
+      <Field label="Clues">
+        <div className="flex gap-2">
+          {([false, true] as const).map((v) => (
+            <button key={String(v)} className={`btn-ghost flex-1 ${s.everyoneAnswers === v ? "!border-gold !text-gold" : ""}`} onClick={() => set({ everyoneAnswers: v })}>{v ? "Everyone answers" : "Buzz in"}</button>
+          ))}
+        </div>
+        <span className="text-xs text-white/40">
+          {s.everyoneAnswers ? "Every clue opens for all players to write an answer. Right answers score, wrong answers cost nothing." : "First to buzz answers. You can still open any single clue for everyone."}
+        </span>
+      </Field>
       <NumField label="Max players (0 = up to 500)" value={s.maxPlayers} min={0} max={100000} onSave={(v) => set({ maxPlayers: v })} />
       {s.mode === "team" && <NumField label="Max teams (0 = no limit)" value={s.maxTeams} min={0} max={100000} onSave={(v) => set({ maxTeams: v })} />}
       <Toggle label="Allow late joins after the game starts" checked={s.allowLateJoin} onChange={(v) => set({ allowLateJoin: v })} />
