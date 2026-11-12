@@ -385,6 +385,12 @@ export const playerHandlers: Partial<Record<ClientEvent, Handler>> = {
     );
     return res.ok ? { ok: true } : { ok: false, error: "Answers are closed" };
   },
+  "player:tap": (game, socket, payload: { n: number }) => {
+    const pid = socket.data.playerId;
+    const p = pid ? game.state.players[pid] : undefined;
+    if (!pid || !p || p.removed || p.audience) return { ok: false, error: "Join first" };
+    return game.raceTap(pid, payload.n) ? { ok: true } : { ok: false, error: "No race right now" };
+  },
   "player:react": (game, socket, payload: { emoji: string }) => {
     const pid = socket.data.playerId;
     if (!pid || !game.state.players[pid] || game.state.players[pid].removed) return { ok: false, error: "Join first" };

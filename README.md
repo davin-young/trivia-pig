@@ -38,8 +38,12 @@ own copy (see [Quick start](#quick-start-docker)). A public instance runs at <ht
   half-filled final round, and jumps to each one. Pressing Play with open items asks first.
 - **Phone-friendly builder.** On a phone the editor shows one category at a time with large fields.
 - **Party-game touches.**
-  - *Everybody's in:* the first player to join gets a crown and can start the game from their
-    phone, so a casual night needs no host device.
+  - *Pig race:* while the room waits, anyone can start a tap race from their phone. Pigs run
+    across the big screen and the winner gets a trophy next to their name. It never affects the
+    game, and the host can turn it off. Emoji reactions work in the lobby too.
+  - *Everybody's in (off by default):* the host starts the game. Turn this on in Settings and
+    the first player to join gets a crown and can start it from their phone, so a casual night
+    needs no host device.
   - *Start countdown:* a "starting in 5…" countdown on the display; people can still join.
   - *Audience:* extra people join to watch, send reactions and cheer for a player. The most-cheered
     player wins a Crowd Favorite award. The audience can join even when the room is locked.

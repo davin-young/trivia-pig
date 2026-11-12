@@ -345,7 +345,8 @@ export function SettingsPanel() {
       {s.mode === "team" && <NumField label="Max teams (0 = no limit)" value={s.maxTeams} min={0} max={100000} onSave={(v) => set({ maxTeams: v })} />}
       <Toggle label="Allow late joins after the game starts" checked={s.allowLateJoin} onChange={(v) => set({ allowLateJoin: v })} />
       <h3 className="mt-2 font-semibold">Party</h3>
-      <Toggle label="First player in can start the game from their phone (👑)" checked={s.vipStart} onChange={(v) => set({ vipStart: v })} />
+      <Toggle label="First player in can start the game from their phone (👑). Off: only the host starts it" checked={s.vipStart} onChange={(v) => set({ vipStart: v })} />
+      <Toggle label="Pig race in the lobby: players tap on their phones to race on the big screen while they wait" checked={s.lobbyGame} onChange={(v) => set({ lobbyGame: v })} />
       <NumField label="Start countdown on the big screen (seconds, 0 = off)" value={s.startCountdownSec} min={0} max={30} onSave={(v) => set({ startCountdownSec: v })} />
       <Toggle label="Doodle avatars next to drawn names" checked={s.avatars} onChange={(v) => set({ avatars: v })} />
       <Toggle label="Players who lost their phone can take their seat back by name" checked={s.reclaimSeats} onChange={(v) => set({ reclaimSeats: v })} />

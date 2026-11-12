@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { io, type Socket } from "socket.io-client";
 import type { GameView } from "@/engine/views";
-import type { Ack, ClientEvent, ClientPayload, FxEvent, PresenceView } from "@/shared/protocol";
+import type { Ack, ClientEvent, ClientPayload, FxEvent, PresenceView, RaceView } from "@/shared/protocol";
 
 export type ConnStatus = "connecting" | "online" | "reconnecting" | "offline" | "error";
 
@@ -45,6 +45,7 @@ interface Options {
 export function useGame({ role, code, watch, onFx, onRedirect, onKicked }: Options) {
   const [view, setView] = useState<GameView | null>(null);
   const [presence, setPresence] = useState<PresenceView | null>(null);
+  const [race, setRace] = useState<RaceView | null>(null);
   const [status, setStatus] = useState<ConnStatus>("connecting");
   const [error, setError] = useState<string | null>(null);
   const [clockOffset, setClockOffset] = useState(0);
@@ -71,6 +72,7 @@ export function useGame({ role, code, watch, onFx, onRedirect, onKicked }: Optio
       setStatus("online");
       setError(null);
     });
+    socket.on("disconnect", () => setRace(null));
     socket.on("disconnect", (reason) => setStatus(reason === "io client disconnect" ? "offline" : "reconnecting"));
     socket.io.on("reconnect_attempt", () => setStatus("reconnecting"));
     socket.on("connect_error", (e) => {
@@ -84,6 +86,7 @@ export function useGame({ role, code, watch, onFx, onRedirect, onKicked }: Optio
       setView(v);
     });
     socket.on("presence", (p: PresenceView) => setPresence(p));
+    socket.on("race", (r: RaceView | null) => setRace(r));
     // Latency probe: answer immediately so the server can measure round-trip time.
     socket.on("rtt", (ack?: () => void) => ack?.());
     socket.on("fx", (fx: FxEvent) => cbs.current.onFx?.(fx));
@@ -116,7 +119,7 @@ export function useGame({ role, code, watch, onFx, onRedirect, onKicked }: Optio
 
   const now = useCallback(() => Date.now() + clockOffset, [clockOffset]);
 
-  return { view, presence, status, error, emit, reconnect, now };
+  return { view, presence, race: view?.phase === "lobby" ? race : null, status, error, emit, reconnect, now };
 }
 
 /** Re-render every `ms` (for countdowns). */

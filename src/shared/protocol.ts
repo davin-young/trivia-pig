@@ -127,6 +127,8 @@ export const clientEvents = {
   "player:seats": z.object({}),
   "player:reclaim": z.object({ playerId: id }),
   "player:buzz": z.object({}),
+  /** Pig race in the lobby: taps since the last message. */
+  "player:tap": z.object({ n: z.number().int().min(1).max(10) }),
   "player:finalWager": z.object({ amount: z.number().int().min(0).max(10_000_000) }),
   "player:finalAnswer": z.object({ drawing: drawingSchema.nullable(), typed: z.string().max(200).optional() }),
   "player:allPlayAnswer": z.object({ drawing: drawingSchema.nullable(), typed: z.string().max(200).optional() }),
@@ -151,5 +153,18 @@ export interface PresenceView {
 }
 
 export type FxEvent = { cue: string; playerId?: string; id?: string };
+
+/** The pig race in the lobby (null when no race is on). Sent as the "race" event. */
+export interface RaceView {
+  id: number;
+  phase: "countdown" | "running" | "done";
+  /** Server time the race starts (the countdown runs until then). */
+  startsAt: number;
+  goal: number;
+  /** The leading pigs, best first. */
+  lanes: { id: string; taps: number; wins: number }[];
+  racers: number;
+  winnerId: string | null;
+}
 
 export const TEAM_COLORS = ["#ff5d73", "#4ff0b1", "#ffd23f", "#7bdff2", "#c792ff", "#ff8c42", "#b8f35d", "#ff7ad9", "#f2e9dc", "#ffffff"];

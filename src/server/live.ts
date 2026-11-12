@@ -13,6 +13,7 @@ import { prisma } from "./db";
 import { BUZZ_WINDOW_MS, orderBuzzes, type PendingBuzz } from "./buzzQueue";
 import { watchTokenFor } from "./watchToken";
 import { recordResults } from "./playerResults";
+import { LobbyRace } from "./lobbyRace";
 
 export interface SocketData {
   role: "display" | "host" | "player";
@@ -440,6 +441,37 @@ export class LiveGame {
   sendState(socket: GameSocket) {
     const view = this.viewFor(socket.data.role, socket.data.playerId ?? undefined);
     (socket as Socket).emit("state", socket.data.viaWatch ? withoutRoomCode(view) : view);
+    const race = this.state.phase === "lobby" ? this.race.view(gameNow()) : null;
+    if (race) (socket as Socket).emit("race", race);
+  }
+
+  // ------------------------------------------------------------ lobby pig race
+  private race = new LobbyRace();
+  private raceSentAt = 0;
+
+  /** A player tapped in the lobby race. It never touches the game log. */
+  raceTap(playerId: string, n: number): boolean {
+    if (this.state.phase !== "lobby" || !this.state.settings.lobbyGame) return false;
+    const before = this.race.view(gameNow())?.phase;
+    if (!this.race.tap(playerId, n, gameNow())) return true;
+    const after = this.race.view(gameNow())?.phase;
+    // A new phase goes out at once; progress is sent at most ~8 times a second.
+    const wait = before !== after ? 0 : Math.max(0, 120 - (gameNow() - this.raceSentAt));
+    if (wait === 0) this.broadcastRace();
+    else if (!this.timers.has("race")) this.later("race", wait, () => this.broadcastRace());
+    return true;
+  }
+
+  private broadcastRace() {
+    this.cancel("race");
+    const now = gameNow();
+    this.raceSentAt = now;
+    const view = this.state.phase === "lobby" ? this.race.view(now) : null;
+    for (const socket of this.sockets.values()) (socket as Socket).emit("race", view);
+    // Come back when the countdown ends, the winner has been shown, or the race times out.
+    const next = view ? this.race.tick(now) : null;
+    if (next !== null) this.later("raceStep", Math.max(50, next - now + 20), () => this.broadcastRace());
+    else this.cancel("raceStep");
   }
 
   emitFx(cue: Cue) {
