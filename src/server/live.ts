@@ -13,7 +13,8 @@ import { prisma } from "./db";
 import { BUZZ_WINDOW_MS, orderBuzzes, type PendingBuzz } from "./buzzQueue";
 import { watchTokenFor } from "./watchToken";
 import { recordResults } from "./playerResults";
-import { LobbyRace } from "./lobbyRace";
+import { LobbyGames } from "./lobbyGames";
+import type { LobbyGameKind, TapResult } from "@/shared/minigames";
 
 export interface SocketData {
   role: "display" | "host" | "player";
@@ -147,7 +148,17 @@ export class LiveGame {
     for (const cue of fx) this.emitFx(cue);
     if (action) this.scheduleAutomation(action);
     this.syncTimers();
-    if (action?.type === "player/kick" || action?.type === "player/ban") this.kickSockets(action.playerId, action.type);
+    if (action?.type === "player/kick" || action?.type === "player/ban") {
+      this.kickSockets(action.playerId, action.type);
+      this.mini.drop(action.playerId);
+    }
+    // Lobby games follow the lobby: tell everyone when it opens, closes, or the host switches them on or off.
+    const lobbyNow = this.state.phase === "lobby";
+    if (lobbyNow !== this.wasLobby || action?.type === "settings/update") {
+      if (!lobbyNow) this.mini.stop();
+      this.wasLobby = lobbyNow;
+      this.broadcastMini();
+    }
     if (action?.type === "settings/update" && !this.state.settings.spectators) this.dropSpectators();
   }
 
@@ -441,37 +452,53 @@ export class LiveGame {
   sendState(socket: GameSocket) {
     const view = this.viewFor(socket.data.role, socket.data.playerId ?? undefined);
     (socket as Socket).emit("state", socket.data.viaWatch ? withoutRoomCode(view) : view);
-    const race = this.state.phase === "lobby" ? this.race.view(gameNow()) : null;
-    if (race) (socket as Socket).emit("race", race);
+    if (this.miniOn) (socket as Socket).emit("mini", this.mini.view(gameNow(), socket.data.role !== "player"));
   }
 
-  // ------------------------------------------------------------ lobby pig race
-  private race = new LobbyRace();
-  private raceSentAt = 0;
+  // ------------------------------------------------------------ lobby games
+  private mini = new LobbyGames();
+  private wasLobby = true;
+  private miniSentAt = 0;
+  private get miniOn() {
+    return this.state.phase === "lobby" && this.state.settings.lobbyGame;
+  }
 
-  /** A player tapped in the lobby race. It never touches the game log. */
-  raceTap(playerId: string, n: number): boolean {
-    if (this.state.phase !== "lobby" || !this.state.settings.lobbyGame) return false;
-    const before = this.race.view(gameNow())?.phase;
-    if (!this.race.tap(playerId, n, gameNow())) return true;
-    const after = this.race.view(gameNow())?.phase;
+  /** A player tapped in a lobby game. It never touches the game log. */
+  miniTap(playerId: string, input: { n?: number; pick?: number }): TapResult | null {
+    if (!this.miniOn) return null;
+    const before = this.mini.view(gameNow()).round?.phase;
+    const { changed, data } = this.mini.tap(playerId, input, gameNow());
+    if (!changed) return data;
+    const after = this.mini.view(gameNow()).round?.phase;
     // A new phase goes out at once; progress is sent at most ~8 times a second.
-    const wait = before !== after ? 0 : Math.max(0, 120 - (gameNow() - this.raceSentAt));
-    if (wait === 0) this.broadcastRace();
-    else if (!this.timers.has("race")) this.later("race", wait, () => this.broadcastRace());
+    const wait = before !== after ? 0 : Math.max(0, 120 - (gameNow() - this.miniSentAt));
+    if (wait === 0) this.broadcastMini();
+    else if (!this.timers.has("mini")) this.later("mini", wait, () => this.broadcastMini());
+    return data;
+  }
+
+  /** The host picks a game, switches shuffling, restarts the round or stops it. */
+  miniControl(opts: { kind?: LobbyGameKind; mix?: boolean; restart?: boolean; stop?: boolean }): boolean {
+    if (!this.miniOn) return false;
+    this.mini.configure(opts);
+    if (opts.stop) this.mini.stop();
+    if (opts.restart) this.mini.restart(gameNow());
+    this.broadcastMini();
     return true;
   }
 
-  private broadcastRace() {
-    this.cancel("race");
+  broadcastMini() {
+    this.cancel("mini");
     const now = gameNow();
-    this.raceSentAt = now;
-    const view = this.state.phase === "lobby" ? this.race.view(now) : null;
-    for (const socket of this.sockets.values()) (socket as Socket).emit("race", view);
-    // Come back when the countdown ends, the winner has been shown, or the race times out.
-    const next = view ? this.race.tick(now) : null;
-    if (next !== null) this.later("raceStep", Math.max(50, next - now + 20), () => this.broadcastRace());
-    else this.cancel("raceStep");
+    this.miniSentAt = now;
+    const on = this.miniOn;
+    const forPlayers = on ? this.mini.view(now, false) : null;
+    const forScreens = on ? this.mini.view(now, true) : null;
+    for (const socket of this.sockets.values()) (socket as Socket).emit("mini", socket.data.role === "player" ? forPlayers : forScreens);
+    // Come back at the next step: the countdown ending, GO, time running out, the result clearing.
+    const next = on ? this.mini.tick(now) : null;
+    if (next !== null) this.later("miniStep", Math.max(50, next - now + 20), () => this.broadcastMini());
+    else this.cancel("miniStep");
   }
 
   emitFx(cue: Cue) {

@@ -204,9 +204,22 @@ async function main() {
   const bramId = (jb.data as { playerId: string }).playerId;
   let v3 = await d3.until((v) => v.players.length === 2, "display sees both players");
   assert(v3.vipId === vipId, "first player in is the VIP (when the host turned that on)");
-  const raced = new Promise<{ phase: string; racers: number } | null>((r) => d3.s.once("race", r));
-  assert((await pb.emit("player:tap", { n: 1 })).ok, "a player starts a pig race in the lobby");
-  assert((await raced)?.phase === "countdown", "the display is told the race is counting down");
+  type Mini = { kind: string; round: { phase: string; kind: string } | null } | null;
+  const miniIs = (ok: (m: Mini) => boolean) =>
+    new Promise<Mini>((resolve) => {
+      const on = (m: Mini) => ok(m) && (d3.s.off("mini", on), resolve(m));
+      d3.s.on("mini", on);
+    });
+  const counting = miniIs((m) => m?.round?.phase === "countdown");
+  assert((await pb.emit("player:tap", { n: 1 })).ok, "a player starts a lobby game");
+  assert((await counting)?.round?.kind === "race", "the display is told the pig race is counting down");
+  const swapped = miniIs((m) => m?.kind === "tug" && m.round?.phase === "countdown");
+  assert((await h3.emit("host:minigame", { kind: "tug", restart: true })).ok, "the host switches the lobby game and restarts it");
+  assert(!!(await swapped), "the display follows the host's choice of game");
+  assert(!(await pb.emit("host:minigame", { stop: true })).ok, "a player cannot control the lobby games");
+  const stopped = miniIs((m) => !!m && m.round === null);
+  await h3.emit("host:minigame", { stop: true });
+  assert(!!(await stopped), "the host can stop a lobby game");
   assert(v3.players[0].signature === null && v3.players[0].avatar === null, "family mode keeps unapproved drawings off the display");
   const hv3 = await h3.until((v) => v.players.length === 2, "host sees both players");
   assert(!!hv3.players[0].signature && !!hv3.players[0].avatar && hv3.players[0].signatureHidden, "host can see the drawing and avatar awaiting approval");

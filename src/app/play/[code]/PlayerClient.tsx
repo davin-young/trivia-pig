@@ -12,13 +12,14 @@ import { ConnBanner, MediaView, StatusDot, TimerBar, contestantName, contestants
 import type { GameView } from "@/engine/views";
 import { AVATAR_CANVAS, FINAL_CANVAS, NAME_CANVAS, isEmptyDrawing, type Drawing } from "@/shared/strokes";
 import { fetchProfile, linkSeat, saveProfile, setRemembering, wantsRemembering } from "@/client/playerProfile";
-import { REACTIONS, type RaceView } from "@/shared/protocol";
+import { REACTIONS, type MiniView } from "@/shared/protocol";
+import { MiniPad } from "@/components/minigames/MiniPad";
 
 export default function PlayerClient({ code }: { code: string }) {
   const [kicked, setKicked] = useState<string | null>(null);
   useWakeLock();
   const [flash, setFlash] = useState<string | null>(null);
-  const { view, race, status, error, emit, now } = useGame({
+  const { view, mini, status, error, emit, now } = useGame({
     role: "player",
     code,
     onFx: (fx) => {
@@ -111,7 +112,7 @@ export default function PlayerClient({ code }: { code: string }) {
       <ScoreToast score={view.scores[me.contestantId ?? ""] ?? 0} streak={view.streaks[me.contestantId ?? ""] ?? 0} />
       {flash && <div className="bg-red-600 py-2 text-center font-semibold">{flash}</div>}
       <div className="flex flex-1 flex-col p-4">
-        <PlayerStage view={view} race={race} emit={emit} now={now} onFlash={setFlash} />
+        <PlayerStage view={view} mini={mini} emit={emit} now={now} onFlash={setFlash} />
       </div>
     </main>
   );
@@ -508,8 +509,8 @@ function AudienceStage({ view, emit }: { view: GameView; emit: Emit }) {
 
 // -------------------------------------------------------------------- stage
 
-function PlayerStage({ view, race, emit, now, onFlash }: { view: GameView; race: RaceView | null; emit: Emit; now: () => number; onFlash: (s: string) => void }) {
-  if (view.phase === "lobby") return <LobbyWait view={view} race={race} emit={emit} now={now} />;
+function PlayerStage({ view, mini, emit, now, onFlash }: { view: GameView; mini: MiniView | null; emit: Emit; now: () => number; onFlash: (s: string) => void }) {
+  if (view.phase === "lobby") return <LobbyWait view={view} mini={mini} emit={emit} now={now} />;
   // Reactions stay out of the way while a clue is live so nobody mis-taps the buzzer.
   const quiet =
     view.phase === "board" ||
@@ -657,86 +658,7 @@ function AllPlayPlayer({ view, emit, now }: { view: GameView; emit: Emit; now: (
   );
 }
 
-/**
- * Pig race: something to do while the room fills up. The first tap starts a countdown for
- * everyone; then each tap moves your pig on the big screen. Taps are sent in small batches.
- */
-function RacePad({ view, race, emit, now }: { view: GameView; race: RaceView | null; emit: Emit; now: () => number }) {
-  const myId = view.me!.playerId;
-  const [mine, setMine] = useState(0);
-  const pending = useRef(0);
-  const raceId = race?.id ?? 0;
-  useEffect(() => {
-    setMine(0);
-    pending.current = 0;
-  }, [raceId]);
-  const running = race?.phase === "running";
-  useEffect(() => {
-    if (!running) return;
-    const t = setInterval(() => {
-      const n = Math.min(10, pending.current);
-      if (n > 0) {
-        pending.current -= n;
-        void emit("player:tap", { n });
-      }
-    }, 250);
-    return () => clearInterval(t);
-  }, [running, emit]);
-  const left = useCountdown(race?.phase === "countdown" ? race.startsAt : null, now);
-  const nameOf = (id: string | null) => view.players.find((p) => p.id === id)?.name ?? "Someone";
-
-  if (!race) {
-    return (
-      <button type="button" className="btn-ghost w-full max-w-sm py-3" onClick={() => void emit("player:tap", { n: 1 })}>
-        🐖 Start a pig race while you wait
-      </button>
-    );
-  }
-  const goal = race.goal;
-  const shown = Math.min(goal, Math.max(mine, race.lanes.find((l) => l.id === myId)?.taps ?? 0));
-  return (
-    <div className="w-full max-w-sm rounded-2xl border border-line bg-white/5 p-3">
-      {race.phase === "countdown" && (
-        <>
-          <div className="text-sm text-white/70">Pig race starts in</div>
-          <div className="money text-5xl">{Math.max(1, Math.ceil((left ?? 0) / 1000))}</div>
-          <button type="button" className="btn-ghost mt-2 w-full py-3" onClick={() => void emit("player:tap", { n: 1 })}>
-            I&apos;m in 🐖
-          </button>
-        </>
-      )}
-      {race.phase === "running" && (
-        <>
-          <div className="mb-2 h-3 overflow-hidden rounded-full bg-black/40" role="progressbar" aria-valuemin={0} aria-valuemax={goal} aria-valuenow={shown} aria-label="Your pig">
-            <div className="h-full rounded-full bg-gold transition-[width] duration-100" style={{ width: `${(shown / goal) * 100}%` }} />
-          </div>
-          <button
-            type="button"
-            className="w-full select-none rounded-2xl bg-gold py-8 text-3xl font-black text-black transition-transform active:scale-95"
-            style={{ touchAction: "manipulation" }}
-            onPointerDown={() => {
-              if (mine >= goal) return;
-              pending.current++;
-              setMine((n) => n + 1);
-            }}
-          >
-            TAP! 🐖
-          </button>
-          <div className="mt-1 text-xs text-white/50">{race.racers} racing · watch the big screen</div>
-        </>
-      )}
-      {race.phase === "done" && (
-        <div className="py-2">
-          <div className="text-4xl">{race.winnerId === myId ? "🏆" : "🏁"}</div>
-          <div className="text-lg font-bold">{race.winnerId === myId ? "You won the pig race!" : `${nameOf(race.winnerId)} won the pig race`}</div>
-          <div className="text-xs text-white/50">Next race in a moment…</div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function LobbyWait({ view, race, emit, now }: { view: GameView; race: RaceView | null; emit: Emit; now: () => number }) {
+function LobbyWait({ view, mini, emit, now }: { view: GameView; mini: MiniView | null; emit: Emit; now: () => number }) {
   const left = useCountdown(view.startingAt, now);
   const isVip = view.vipId === view.me!.playerId;
   const others = view.players.filter((x) => !x.removed).length - 1;
@@ -815,7 +737,7 @@ function LobbyWait({ view, race, emit, now }: { view: GameView; race: RaceView |
           Watch the big screen. {view.vipId ? `${view.players.find((x) => x.id === view.vipId)?.name ?? "The host"} starts the game when everybody is in.` : "The host starts the game when everybody is in."}
         </p>
       )}
-      {left === null && view.settings.lobbyGame && <RacePad view={view} race={race} emit={emit} now={now} />}
+      {left === null && <MiniPad view={view} mini={mini} emit={emit} now={now} />}
       {view.settings.reactions && (
         <div className="w-full max-w-sm">
           <div className="text-xs text-white/50">Say hi on the big screen</div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { MiniHostControl } from "@/components/minigames/MiniHostControl";
 import Link from "next/link";
 import type { BoardCellView } from "@/engine/views";
 import { Ink } from "@/components/Ink";
@@ -55,7 +56,7 @@ function useShortcuts() {
 // ------------------------------------------------------------------- lobby
 
 function LobbyControl() {
-  const { view, act, presence, now } = useHost();
+  const { view, act, presence, now, mini, emit } = useHost();
   const left = useCountdown(view.startingAt, now);
   const players = view.players.filter((p) => !p.removed);
   const pending = players.filter((p) => p.signatureHidden && (p.signature || p.avatar));
@@ -156,6 +157,7 @@ function LobbyControl() {
           ▶ Start game
         </button>
       )}
+      {left === null && <MiniHostControl mini={mini} emit={emit} />}
       {view.vipId && left === null && (
         <p className="text-center text-xs text-white/50">
           👑 {players.find((p) => p.id === view.vipId)?.name} was first in and can also start the game from their phone (turn this off in Settings).
