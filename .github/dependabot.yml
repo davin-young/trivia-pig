@@ -1,0 +1,41 @@
+# Weekly dependency updates. Minor and patch npm updates arrive as one grouped pull request;
+# security updates are opened on their own as soon as an advisory is published.
+# The 7-day cooldown skips versions published in the last week, when a hijacked release is
+# most likely to still be live. It does not delay security updates.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+
+  # Keeps the commit SHAs that pin each GitHub Action current.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+
+  # Keeps the digest-pinned Node base image in the Dockerfile current.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+
+  - package-ecosystem: docker-compose
+    directories:
+      - /
+      - /deploy/homelab
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7

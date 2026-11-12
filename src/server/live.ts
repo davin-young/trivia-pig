@@ -529,7 +529,7 @@ export class LiveGame {
         // Database hiccup: keep the game running from memory and keep retrying
         // (1s, 2s, 4s ... capped at 15s) until the write lands.
         this.saveFailures++;
-        console.error(`[game ${this.code}] save failed (attempt ${this.saveFailures})`, err instanceof Error ? err.message : err);
+        console.error("[game %s] save failed (attempt %d)", this.code, this.saveFailures, err instanceof Error ? err.message : err);
         this.dirty = true;
         // Tell the host once it is clearly not a blip, so they are not surprised later.
         if (this.saveFailures === 2) this.broadcastPresence();

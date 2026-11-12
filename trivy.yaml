@@ -1,0 +1,3 @@
+# Trivy reads this file automatically when it runs from the repository root.
+# It only points Trivy at the documented exceptions in .trivyignore.yaml.
+ignorefile: .trivyignore.yaml

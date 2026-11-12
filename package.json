@@ -56,6 +56,7 @@
     "esbuild": "^0.28.2",
     "eslint": "^9.39.5",
     "eslint-config-next": "^16.4.6",
+    "fast-check": "^4.10.2",
     "postcss": "^8.5.32",
     "tailwindcss": "^4.3.5",
     "typescript": "5.9",
@@ -66,5 +67,11 @@
     "@prisma/engines@6.19.3": true,
     "esbuild@0.28.2": true,
     "prisma@6.19.3": true
+  },
+  "overrides": {
+    "deepmerge-ts": "^8.0.2",
+    "@typescript-eslint/typescript-estree": {
+      "minimatch": "^11.0.1"
+    }
   }
 }

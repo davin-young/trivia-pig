@@ -1,8 +1,10 @@
 # syntax=docker/dockerfile:1.7
 # Multi-stage build: one image runs Next.js + Socket.IO (server.ts) on port 3000.
 
-FROM node:22-bookworm-slim AS base
-RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates tini \
+# The Node image is pinned by digest so a re-pushed tag cannot change what ships.
+# To update: docker buildx imagetools inspect node:22-bookworm-slim, then replace both digests.
+FROM node:22-bookworm-slim@sha256:18052396bf1d0c6e0a8c58181b5c1457da19409efbd5032a3f4d86974e74d13c AS base
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 
@@ -23,7 +25,12 @@ COPY . .
 RUN npm run build && npm prune --omit=dev --ignore-scripts && npx prisma generate
 
 # ---- runtime -------------------------------------------------------------
-FROM base AS runner
+# Starts from the pinned image itself (not the "base" stage) so the runtime contains only
+# what it needs and scanners can see exactly which image ships.
+FROM node:22-bookworm-slim@sha256:18052396bf1d0c6e0a8c58181b5c1457da19409efbd5032a3f4d86974e74d13c AS runner
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates tini \
+  && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
 ARG APP_VERSION=dev
 LABEL org.opencontainers.image.title="Trivia Pig (jeppidy)" \
       org.opencontainers.image.description="Self-hosted real-time quiz show: display, host controls, phone buzzers" \
@@ -47,9 +54,10 @@ COPY --from=build --chown=app:app /app/prisma ./prisma
 COPY --from=build --chown=app:app /app/src ./src
 COPY --from=build --chown=app:app /app/next.config.ts /app/tsconfig.json ./
 COPY --chown=app:app scripts/docker-entrypoint.sh ./scripts/docker-entrypoint.sh
-# No USER here on purpose: the entrypoint starts as root only to fix ownership of the
-# mounted /data volume, then drops to the unprivileged "app" user (uid 10001) with setpriv
-# before running migrations or the server.
+# The container never runs as root. A named volume mounted at /data/uploads inherits this
+# ownership; a bind mount must be owned by uid 10001 on the host (the homelab compose file
+# does that with a one-shot init service).
+USER app
 EXPOSE 3000
 VOLUME ["/data"]
 STOPSIGNAL SIGTERM
