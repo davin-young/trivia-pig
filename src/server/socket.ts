@@ -116,7 +116,12 @@ export function attachSocketServer(io: Server, deps: SocketAuthDeps = prismaSock
         const handler = handlers[event];
         if (!handler) return reply({ ok: false, error: "Not allowed" });
         const parsed = clientEvents[event].safeParse(payload ?? {});
-        if (!parsed.success) return reply({ ok: false, error: "Invalid message" });
+        if (!parsed.success) {
+          const field = String(parsed.error.issues[0]?.path[0] ?? "");
+          console.warn("[socket %s] rejected: %s", event, parsed.error.issues.slice(0, 3).map((i) => `${i.path.join(".")}: ${i.message}`).join("; "));
+          const drawn = field === "signature" || field === "avatar" || field === "drawing";
+          return reply({ ok: false, error: drawn ? "That drawing couldn't be sent. Clear it and draw it again." : field === "name" ? "Enter a name of 1 to 24 characters." : "Invalid message" });
+        }
         const game = await gameP;
         if (!game) return reply({ ok: false, error: "Game not found" });
         try {

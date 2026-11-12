@@ -61,8 +61,11 @@ export function DrawingPad({ width, height, initial, multiColor, onChange, class
     const scale = Math.min(rect.width / width, rect.height / height);
     const ox = (rect.width - width * scale) / 2;
     const oy = (rect.height - height * scale) / 2;
-    const x = (e.clientX - rect.left - ox) / scale;
-    const y = (e.clientY - rect.top - oy) / scale;
+    // A captured pointer keeps reporting after it leaves the pad; keep the point on the canvas
+    // (the server rejects coordinates far outside it).
+    const onPad = (v: number, max: number) => (Number.isFinite(v) ? Math.max(0, Math.min(max, v)) : 0);
+    const x = onPad((e.clientX - rect.left - ox) / scale, width);
+    const y = onPad((e.clientY - rect.top - oy) / scale, height);
     const pressure = e.pointerType === "pen" ? Math.max(0.05, Math.min(1, e.pressure || 0.5)) : 0.5;
     return [Math.round(x * 10) / 10, Math.round(y * 10) / 10, pressure];
   };
