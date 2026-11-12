@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { sound } from "@/client/sound";
 import { useTick } from "@/client/useGame";
+import { PartyScreen } from "./PartyScreen";
 import { useCountdown } from "@/components/game";
 import type { GameView } from "@/engine/views";
 import { TEAM_COLORS } from "@/shared/protocol";
@@ -108,6 +109,8 @@ export function MiniScreen({ view, round, now }: { view: GameView; round: MiniRo
         </div>
         <div className="shrink-0 text-[1.9vmin] text-white/50">{round.players} playing</div>
       </div>
+
+      <PartyScreen view={view} round={round} now={now} />
 
       {round.kind === "race" && (
         <div className="flex flex-col gap-[0.6vmin]">

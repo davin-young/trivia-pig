@@ -9,7 +9,7 @@ import { useWakeLock } from "@/client/useWakeLock";
 import type { GameView } from "@/engine/views";
 import { TEAM_COLORS, type FxEvent, type MiniView, type PresenceView } from "@/shared/protocol";
 import { MiniScreen } from "@/components/minigames/MiniScreen";
-import { LOBBY_GAME_INFO } from "@/shared/minigames";
+import { LOBBY_GAME_INFO, PARTY_KINDS } from "@/shared/minigames";
 import { Ink } from "@/components/Ink";
 import {
   APP_NAME,
@@ -261,6 +261,8 @@ const TILTS = [-2.2, 1.6, -1.1, 2.4, -1.8, 0.9, 2, -2.6, 1.2, -0.7];
  */
 function Lobby({ view, presence, now, mini }: { view: GameView; presence: PresenceView | null; now: () => number; mini: MiniView | null }) {
   const round = mini?.round ?? null;
+  // The bigger lobby games take over the middle of the screen; the way in moves to the corner.
+  const stage = !!round && !!PARTY_KINDS[round.kind];
   const origin = useOrigin();
   const joinUrl = `${origin}/join?code=${view.code}`;
   const host = origin.replace(/^https?:\/\//, "");
@@ -287,10 +289,28 @@ function Lobby({ view, presence, now, mini }: { view: GameView; presence: Presen
               <div className="text-[2.1vmin] text-white/70">The host will send you the link to join.</div>
             </div>
           </div>
+        ) : stage ? (
+          <div className="flex shrink-0 items-center gap-[1.6vmin] rounded-[2vmin] bg-black/35 px-[1.6vmin] py-[1vmin] shadow-xl ring-1 ring-white/10">
+            {origin && <Qr value={joinUrl} className="w-[11vmin] shrink-0 rounded-[1vmin] bg-white p-[0.6vmin] [&>svg]:h-auto [&>svg]:w-full" />}
+            <div>
+              <div className="text-[1.9vmin] text-white/70">
+                Join at <span className="cat-text text-gold">{host}/join</span>
+              </div>
+              <div className="money text-[5vmin] leading-none tracking-[0.15em]" aria-label={`Room code ${view.code}`}>
+                {view.code}
+              </div>
+            </div>
+          </div>
         ) : null}
       </header>
 
-      <div className="flex min-h-0 flex-1 gap-[3vmin] portrait:flex-col">
+      {stage && round && (
+        <div className="flex min-h-0 flex-1 flex-col justify-center">
+          <MiniScreen view={view} round={round} now={now} />
+        </div>
+      )}
+
+      <div className={`flex min-h-0 flex-1 gap-[3vmin] portrait:flex-col ${stage ? "hidden" : ""}`}>
       {!view.settings.hideCode && (
         // The way in, as big as the screen allows: alone in the middle until someone joins,
         // then to one side so the names have room.
@@ -359,7 +379,7 @@ function Lobby({ view, presence, now, mini }: { view: GameView; presence: Presen
 
       </div>
 
-      {round && <MiniScreen view={view} round={round} now={now} />}
+      {round && !stage && <MiniScreen view={view} round={round} now={now} />}
 
       <footer className="flex items-center justify-between gap-[3vmin] text-[2.6vmin]">
         <div className="text-white/80">

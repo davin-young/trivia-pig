@@ -4,7 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { useGame } from "@/client/useGame";
 import { useCountdown } from "@/components/game";
 import type { GameView } from "@/engine/views";
-import { COUNT_MAX, COUNT_MIN, LOBBY_GAME_INFO, TUG_SIDES, type MiniView, type TapResult } from "@/shared/minigames";
+import { COUNT_MAX, COUNT_MIN, LOBBY_GAME_INFO, TUG_SIDES, type MiniView, type TapInput, type TapResult } from "@/shared/minigames";
+import { PartyPad } from "./PartyPad";
 
 type Emit = ReturnType<typeof useGame>["emit"];
 
@@ -17,18 +18,22 @@ export function MiniPad({ view, mini, emit, now }: { view: GameView; mini: MiniV
   const round = mini?.round ?? null;
   const [taps, setTaps] = useState(0);
   const [me, setMe] = useState<TapResult>({});
+  const [err, setErr] = useState<string | null>(null);
   const pending = useRef(0);
   const roundId = round?.id ?? 0;
   useEffect(() => {
     setTaps(0);
     setMe({});
+    setErr(null);
     pending.current = 0;
   }, [roundId]);
 
   const send = useCallback(
-    async (payload: { n?: number; pick?: number }) => {
+    async (payload: TapInput) => {
       const r = await emit("player:tap", payload);
       if (r.ok && r.data) setMe((prev) => ({ ...prev, ...(r.data as TapResult) }));
+      // Steering sends many messages a second; a dropped one is not worth a warning.
+      if (payload.x === undefined && payload.dir === undefined) setErr(r.ok ? null : r.error);
     },
     [emit],
   );
@@ -160,6 +165,9 @@ export function MiniPad({ view, mini, emit, now }: { view: GameView; mini: MiniV
             </div>
           </>
         ))}
+
+      {round.phase === "running" && round.x && <PartyPad view={view} round={round} x={round.x} myId={myId} send={send} now={now} />}
+      {err && round.phase === "running" && <div className="mt-2 text-sm text-red-300" role="alert">{err}</div>}
 
       {round.phase === "running" && <div className="mt-1 text-xs text-white/50">{round.players} playing · watch the big screen</div>}
 

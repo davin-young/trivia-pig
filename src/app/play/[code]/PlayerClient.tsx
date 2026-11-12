@@ -14,6 +14,7 @@ import { AVATAR_CANVAS, FINAL_CANVAS, NAME_CANVAS, isEmptyDrawing, type Drawing 
 import { fetchProfile, linkSeat, saveProfile, setRemembering, wantsRemembering } from "@/client/playerProfile";
 import { REACTIONS, type MiniView } from "@/shared/protocol";
 import { MiniPad } from "@/components/minigames/MiniPad";
+import { PARTY_KINDS } from "@/shared/minigames";
 
 export default function PlayerClient({ code }: { code: string }) {
   const [kicked, setKicked] = useState<string | null>(null);
@@ -686,6 +687,15 @@ function LobbyWait({ view, mini, emit, now }: { view: GameView; mini: MiniView |
             Save
           </button>
         </div>
+      </div>
+    );
+  }
+  // A bigger lobby game needs the whole screen: the game goes first, everything else waits.
+  if (left === null && mini?.round && PARTY_KINDS[mini.round.kind]) {
+    return (
+      <div className="flex flex-1 flex-col items-center gap-4 text-center">
+        <MiniPad view={view} mini={mini} emit={emit} now={now} />
+        {view.settings.reactions && <ReactionBar emit={emit} />}
       </div>
     );
   }
