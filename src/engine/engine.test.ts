@@ -266,6 +266,18 @@ describe("back to lobby", () => {
     expect(g.state.phase).toBe("board");
   });
 
+  it("also clears the countdown that led to the start, so the game does not start again", () => {
+    const { g, player, host, now } = game();
+    player({ type: "player/join", playerId: "a", name: "Ann", signature: null });
+    host({ type: "game/countdown", endsAt: now() + 5000 });
+    host({ type: "game/start", dailyDoubles: {} });
+    expect(g.state.phase).toBe("board");
+    expect(g.backToLobby()).toBe(true);
+    expect(g.state.phase).toBe("lobby");
+    expect(g.state.startingAt).toBeNull();
+    expect(host({ type: "game/countdown", endsAt: now() + 5000 }).ok).toBe(true);
+  });
+
   it("refuses once a clue has been opened or points have moved", () => {
     const opened = withPlayers();
     opened.host({ type: "clue/open", clueId: opened.clue(0, 0, 0) });

@@ -30,11 +30,14 @@ export class GameHistory {
    */
   backToLobby(): boolean {
     if (!this.canReturnToLobby) return false;
-    for (let i = this.log.length - 1; i >= 0; i--) {
-      const e = this.log[i];
-      if (!e.undone && e.action.type === "game/start") return this.setUndone(e.seq, true) && this.state.phase === "lobby";
+    const start = this.log.findLast((e) => !e.undone && e.action.type === "game/start");
+    if (!start) return false;
+    // The "starting in..." countdown that led to the start goes too: left in place it has
+    // already run out, and the game would start again at once.
+    for (const e of this.log) {
+      if (e.seq < start.seq && !e.undone && (e.action.type === "game/countdown" || e.action.type === "game/countdownCancel")) e.undone = true;
     }
-    return false;
+    return this.setUndone(start.seq, true) && this.state.phase === "lobby" && !this.state.startingAt;
   }
 
   get nextSeq(): number {
