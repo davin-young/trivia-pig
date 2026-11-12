@@ -21,8 +21,11 @@ ENV NEXT_PUBLIC_APP_NAME=$NEXT_PUBLIC_APP_NAME \
     NEXT_TELEMETRY_DISABLED=1
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-# prune can drop the generated Prisma client, so generate it again afterwards
-RUN npm run build && npm prune --omit=dev --ignore-scripts && npx prisma generate
+# prune can drop the generated Prisma client, so generate it again afterwards.
+# sharp (and its prebuilt libvips) is an optional dependency of Next's image optimizer, which
+# this app turns off (images.unoptimized in next.config.ts), so it is left out of the image.
+RUN npm run build && npm prune --omit=dev --ignore-scripts && npx prisma generate \
+  && rm -rf node_modules/sharp node_modules/@img
 
 # ---- runtime -------------------------------------------------------------
 # Starts from the pinned image itself (not the "base" stage) so the runtime contains only

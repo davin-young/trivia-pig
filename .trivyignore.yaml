@@ -3,7 +3,9 @@
 # sharp / libvips (LGPL-3.0-or-later)
 #   Where it comes from: sharp is an optional dependency of Next.js, used only by the
 #   built-in image optimizer. This app sets `images: { unoptimized: true }` in
-#   next.config.ts, so that code path is never used.
+#   next.config.ts, so that code path is never used, and the Dockerfile deletes sharp
+#   and its libvips binaries from the runtime image. They remain in package-lock.json
+#   only because npm cannot drop another package's optional dependency.
 #   Why it is acceptable: the @img/sharp-libvips-* packages are unmodified prebuilt
 #   libvips binaries that sharp loads as a separate shared library. LGPL allows that
 #   use from MIT-licensed code; nothing here is statically linked or modified.
