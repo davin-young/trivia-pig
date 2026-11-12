@@ -1,6 +1,7 @@
 {
   "realm": "trivia",
   "displayName": "Trivia Pig",
+  "loginTheme": "triviapig",
   "enabled": true,
   "sslRequired": "external",
   "registrationAllowed": true,
@@ -11,6 +12,16 @@
   "rememberMe": true,
   "verifyEmail": false,
   "bruteForceProtected": true,
+  "permanentLockout": false,
+  "failureFactor": 8,
+  "waitIncrementSeconds": 60,
+  "maxFailureWaitSeconds": 900,
+  "maxDeltaTimeSeconds": 43200,
+  "passwordPolicy": "length(10) and notUsername and notEmail and passwordHistory(3)",
+  "eventsEnabled": true,
+  "eventsExpiration": 2592000,
+  "adminEventsEnabled": true,
+  "adminEventsDetailsEnabled": false,
   "roles": {
     "realm": [
       { "name": "trivia-admin", "description": "Super-admin in Trivia Pig (manage users and media)" },
