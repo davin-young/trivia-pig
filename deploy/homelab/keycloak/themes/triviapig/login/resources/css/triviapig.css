@@ -46,17 +46,30 @@ html.login-pf body,
 }
 
 .pf-v5-c-login {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
   background: none;
   padding: 24px 16px;
 }
+/* PatternFly lays this out as a wide grid with side padding; here it is one centred column. */
 .pf-v5-c-login__container {
   display: flex;
   flex-direction: column;
+  align-items: stretch;
   gap: 20px;
+  width: 440px;
+  max-width: calc(100vw - 32px);
+  margin: 0;
+  padding: 0;
+}
+.pf-v5-c-login__header,
+.pf-v5-c-login__main {
   width: 100%;
-  max-width: 440px;
-  margin-inline: auto;
-  grid-template-areas: none;
+  max-width: none;
+  margin: 0;
+  grid-area: auto;
 }
 
 /* ---- brand: the realm name with the pig, in the app's condensed lettering */
@@ -65,8 +78,9 @@ html.login-pf body,
   text-align: center;
 }
 #kc-header-wrapper {
-  display: inline-flex;
+  display: flex;
   align-items: center;
+  justify-content: center;
   gap: 10px;
   color: var(--tp-ink);
   font-family: var(--tp-display);
@@ -75,7 +89,7 @@ html.login-pf body,
   letter-spacing: 0.04em;
   line-height: 1.1;
   text-transform: uppercase;
-  white-space: normal;
+  white-space: nowrap;
 }
 #kc-header-wrapper::before {
   content: "🐷";
@@ -90,6 +104,8 @@ html.login-pf body,
   background: var(--tp-panel);
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
   color: var(--tp-ink);
+  display: block;
+  padding: 0;
   overflow: hidden;
 }
 .pf-v5-c-login__main-header {
@@ -99,14 +115,18 @@ html.login-pf body,
 .pf-v5-c-login__main-body {
   padding: 16px 24px 24px;
 }
+/* "New here? Create an account" sits inside the card body, under a hairline. */
 .pf-v5-c-login__main-footer {
+  display: block;
+  margin: 20px 0 0;
   padding: 0;
 }
 .pf-v5-c-login__main-footer-band {
+  margin: 0;
   border-top: 1px solid var(--tp-line);
-  background: var(--tp-panel-2);
+  background: none;
   color: var(--tp-muted);
-  padding: 14px 24px;
+  padding: 16px 0 0;
   text-align: center;
 }
 #kc-page-title,
