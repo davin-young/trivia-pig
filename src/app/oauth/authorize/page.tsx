@@ -53,6 +53,7 @@ export default async function AuthorizePage({ searchParams }: { searchParams: Pr
             <ul className="list-inside list-disc text-white/80">
               <li>see your boards, with their clues and answers</li>
               <li>make new boards and change your existing ones</li>
+              <li>share a board by link or list it in the public gallery, and stop sharing it</li>
             </ul>
             <div className="mb-1 mt-3 font-semibold">It will not be able to</div>
             <ul className="list-inside list-disc text-white/80">

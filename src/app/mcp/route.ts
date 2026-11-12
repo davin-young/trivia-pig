@@ -1,6 +1,6 @@
 import { apiAuth } from "@/server/apiTokens";
 import { OAUTH_CORS, wwwAuthenticate } from "@/server/oauth";
-import { BoardApiError, createBoard, getBoard, listBoards, reviewBoard, updateBoard } from "@/server/boardApi";
+import { BoardApiError, createBoard, getBoard, listBoards, reviewBoard, shareBoard, updateBoard } from "@/server/boardApi";
 import { APP_NAME } from "@/shared/app";
 import { EXAMPLE_BOARD, boardJsonSchema } from "@/shared/simpleBoard";
 
@@ -61,6 +61,20 @@ const TOOLS = [
       required: ["id", "board"],
     },
   },
+  {
+    name: "share_board",
+    description:
+      'Share one of your own boards by link, or stop sharing it. mode "view": anyone with the link can read the clues and answers. mode "copy": signed-in hosts can also copy it. listed true (only with mode "copy") also shows it in the public gallery with its title, description, tags and your name. mode "off" removes the link and the listing. Sharing reveals the answers, so only do this when the user asks.',
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: idArg,
+        mode: { type: "string", enum: ["off", "view", "copy"] },
+        listed: { type: "boolean", description: "List the board in the public gallery. Needs mode copy." },
+      },
+      required: ["id", "mode"],
+    },
+  },
 ];
 
 const FORMAT_HELP = {
@@ -94,6 +108,8 @@ async function callTool(userId: string, name: string, args: Record<string, unkno
         return toolText(reviewBoard(args.board));
       case "create_board":
         return toolText(await createBoard(userId, args.board));
+      case "share_board":
+        return toolText(await shareBoard(userId, String(args.id ?? ""), args.mode, args.listed));
       case "update_board":
         return toolText(await updateBoard(userId, String(args.id ?? ""), args.board, Number.isInteger(args.baseRev) ? (args.baseRev as number) : undefined));
       default:

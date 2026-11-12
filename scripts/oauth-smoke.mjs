@@ -119,7 +119,7 @@ try {
 
   // ---- using it
   const tools = await json(await mcp(t1.access_token));
-  check("mcp with the access token", tools?.result?.tools?.length === 6);
+  check("mcp with the access token", tools?.result?.tools?.length === 7);
   check("board API with the access token", (await fetch(`${BASE}/api/v1/boards`, { headers: { authorization: `Bearer ${t1.access_token}` } })).status === 200);
   check("refresh token is not an access token", (await mcp(t1.refresh_token)).status === 401);
   check("made-up token refused", (await mcp("tpo_" + randomBytes(30).toString("base64url"))).status === 401);
