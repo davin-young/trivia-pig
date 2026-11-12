@@ -115,8 +115,9 @@ export default function DisplayClient({ code }: { code: string }) {
       {view.screen === "scores" && <ScoresOverlay view={view} />}
       {view.announcement && <Announcement key={view.announcement.at} text={view.announcement.text} />}
       {view.showJoinQr && view.phase !== "lobby" && !view.settings.hideCode && <CornerQr code={view.code} />}
-      {view.screen === "none" && (
-        <div className="pointer-events-none fixed inset-0 z-20 overflow-hidden" aria-hidden>
+      {/* Above the scoreboard, "be right back" and blank screens, so the room can still react. */}
+      {(
+        <div className="pointer-events-none fixed inset-0 z-50 overflow-hidden" aria-hidden>
           {reactions.map((r) => (
             <div key={r.key} className="anim-react absolute bottom-0 flex flex-col items-center" style={{ left: `${r.x}%` }}>
               <span className="text-[7vmin] leading-none drop-shadow-lg">{r.emoji}</span>
@@ -806,7 +807,7 @@ function CornerQr({ code }: { code: string }) {
   const origin = useOrigin();
   if (!origin) return null;
   return (
-    <div className="fixed right-[1.5vmin] top-[1.5vmin] z-20 flex flex-col items-center rounded-[1vmin] bg-black/70 p-[1vmin]">
+    <div className="fixed right-[1.5vmin] top-[1.5vmin] z-50 flex flex-col items-center rounded-[1vmin] bg-black/70 p-[1vmin] ring-1 ring-white/20">
       <Qr value={`${origin}/join?code=${code}`} className="w-[13vmin] [&>svg]:h-auto [&>svg]:w-full" />
       <div className="money mt-[0.5vmin] text-[2.6vmin] tracking-widest text-white">{code}</div>
     </div>
