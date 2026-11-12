@@ -144,6 +144,15 @@ sudo ./scripts/install-autodeploy.sh
 Without `APP_IMAGE` the same timer builds from the git checkout instead (it then follows `main`
 directly, without waiting for CI). `sudo ./scripts/install-autodeploy.sh remove` turns it off.
 
+### Notifications
+The same install also runs `scripts/monitor.sh` every minute. Put an address in `ALERT_URL`
+(`.env`) and it tells you, once when a problem starts and once when it clears, about: the app
+being down or unreachable from the internet, a crash, games not saving, `ALERT_USERS` or more
+devices connected (default 100), memory or disk running out, overdue backups, and the system
+clock jumping. Deploys and failed deploys are announced too. `./scripts/notify.sh test` sends
+a test message. Because a machine that is switched off cannot send anything, set
+`HEARTBEAT_URL` to a ping URL from an outside service to hear about that as well.
+
 Why not Kubernetes: a live game lives in the memory of one server process, so a second replica
 could not take over its players anyway. What protects a game is waiting for it to end, and the
 fact that every action is saved, so even a forced restart resumes where it stopped.

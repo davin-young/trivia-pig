@@ -79,7 +79,7 @@ jobs:
         run: |
           cp .env.example .env
           POSTGRES_PASSWORD=x AUTH_SECRET=y docker compose --profile keycloak --profile minio --profile caddy config -q
-          sh -n scripts/backup.sh && sh -n scripts/restore.sh && sh -n scripts/update.sh && sh -n scripts/install-autodeploy.sh
+          sh -n scripts/backup.sh && sh -n scripts/restore.sh && sh -n scripts/update.sh && sh -n scripts/install-autodeploy.sh && sh -n scripts/monitor.sh && sh -n scripts/notify.sh
       - name: Build and start (app + Postgres)
         run: docker compose up -d --build --wait --wait-timeout 300
       - name: Health and readiness

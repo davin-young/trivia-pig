@@ -91,6 +91,7 @@ if docker compose up -d --wait app; then
   rm -f .deploy-pending .deploy-failed
   version="$(docker compose exec -T app node -e "fetch('http://127.0.0.1:3000/readyz').then(r=>r.json()).then(j=>console.log(j.version)).catch(()=>console.log('?'))" 2>/dev/null || echo '?')"
   log "app is healthy (version $version)"
+  ./scripts/notify.sh "Trivia Pig updated" "Version $version is live." normal >/dev/null 2>&1 || true
   docker image prune -f >/dev/null
   exit 0
 fi
@@ -103,8 +104,10 @@ if [ -n "$current" ]; then
   log "rolling back to the previous version"
   if APP_IMAGE=triviapig:previous APP_PULL_POLICY=never docker compose up -d --wait app; then
     log "rolled back; the previous version is healthy"
+    ./scripts/notify.sh "Trivia Pig update failed" "The new version did not start, so the previous one was put back. See: journalctl -u triviapig-deploy -n 100" urgent >/dev/null 2>&1 || true
   else
     log "ERROR: rollback did not become healthy either"
+    ./scripts/notify.sh "Trivia Pig is down after a failed update" "Neither the new nor the previous version started. See: journalctl -u triviapig-deploy -n 100" urgent >/dev/null 2>&1 || true
   fi
 fi
 exit 1
