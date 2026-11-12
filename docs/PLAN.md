@@ -103,3 +103,23 @@ signature/final uploads at most 1 per 2 s, and a 256 KB `maxHttpBufferSize`.
 data model → engine (+tests) → socket/auth/pairing → host → display → player → lobby/mgmt →
 sound → Final Jeopardy → builder → media → dashboard/history/post-game → roles/sharing → deploy
 (Docker, Fly.io, homelab via Cloudflare Tunnel for triviapig.lol).
+
+## To do
+
+- [ ] **Let people plug their own AI in to make boards.** Easiest path first:
+  1. *Personal API tokens.* A host creates a token on the dashboard (shown once, stored hashed,
+     revocable, scoped to their own boards). `Authorization: Bearer <token>` is accepted on the
+     board routes that already exist: `POST /api/boards` (create from JSON content),
+     `GET /api/boards/:id/export`, and a new `PUT /api/boards/:id/content`. Same validation
+     (`parseContent`) and rate limits as the editor.
+  2. *A published board format.* Serve the JSON schema for a board at `/api/schema/board.json`
+     plus a one-page "make a board with your AI" guide with a copy-paste prompt, so any chat
+     assistant can produce a file that the existing Import button accepts. This needs no token
+     and works today for people who are not technical.
+  3. *An MCP server.* A thin wrapper over the token API (`list_boards`, `get_board`,
+     `create_board`, `update_board`, `check_board`), served at `/mcp` over streamable HTTP so
+     Claude and other MCP clients can connect with just the URL and a token.
+  Never expose live games, answers of a game in progress, or other hosts' boards through any of these.
+- [ ] Set `ALERT_URL` on the homelab so the monitor's notifications reach a phone.
+- [ ] Set NTP on the ESXi host (its clock was about 6 minutes fast on 2026-11-12).
+- [ ] Submit `sitemap.xml` in Google Search Console.
