@@ -27,7 +27,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^1.8.0",
     "@aws-sdk/client-s3": "^3.1166.0",
-    "@prisma/client": "^6.19.3",
+    "@prisma/client": "^7.10.1",
     "bcryptjs": "^3.0.3",
     "canvas-confetti": "^1.9.4",
     "nanoid": "^6.0.2",
