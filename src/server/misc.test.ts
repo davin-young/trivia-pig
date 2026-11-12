@@ -24,6 +24,15 @@ describe("rate limiting", () => {
     expect([b.take(1, 0), b.take(1, 0), b.take(1, 0), b.take(1, 0)]).toEqual([true, true, true, false]);
     expect(b.take(1, 1000)).toBe(true);
   });
+  it("is not drained when the clock steps backwards", () => {
+    const b = new TokenBucket(3, 1, 400_000);
+    expect(b.take(1, 400_000)).toBe(true);
+    expect(b.take(1, 20_000)).toBe(true); // clock jumped back 380 s
+    expect(b.take(1, 20_000)).toBe(true);
+    expect(b.take(1, 20_000)).toBe(false);
+    expect(b.take(1, 21_000)).toBe(true);
+  });
+
 });
 
 describe("message size limits", () => {

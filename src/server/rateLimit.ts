@@ -1,3 +1,5 @@
+import { gameNow } from "@/shared/clock";
+
 /** Token bucket: `capacity` burst, refilling `perSecond` tokens per second. */
 export class TokenBucket {
   private tokens: number;
@@ -5,13 +7,14 @@ export class TokenBucket {
   constructor(
     private capacity: number,
     private perSecond: number,
-    now = Date.now(),
+    now = gameNow(),
   ) {
     this.tokens = capacity;
     this.last = now;
   }
-  take(cost = 1, now = Date.now()): boolean {
-    this.tokens = Math.min(this.capacity, this.tokens + ((now - this.last) / 1000) * this.perSecond);
+  take(cost = 1, now = gameNow()): boolean {
+    // Time never counts backwards here: a clock that steps back must not drain the bucket.
+    this.tokens = Math.min(this.capacity, this.tokens + (Math.max(0, now - this.last) / 1000) * this.perSecond);
     this.last = now;
     if (this.tokens < cost) return false;
     this.tokens -= cost;
@@ -21,7 +24,7 @@ export class TokenBucket {
 
 /** Keyed fixed-window limiter for HTTP routes (login, uploads, joins). */
 const windows = new Map<string, { count: number; resetAt: number }>();
-export function hit(key: string, limit: number, windowMs: number, now = Date.now()): boolean {
+export function hit(key: string, limit: number, windowMs: number, now = gameNow()): boolean {
   const w = windows.get(key);
   if (!w || w.resetAt <= now) {
     windows.set(key, { count: 1, resetAt: now + windowMs });
