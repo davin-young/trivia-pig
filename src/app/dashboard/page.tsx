@@ -30,7 +30,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const boardOwners = visible.filter((o) => o.role !== "SCOREKEEPER").map((o) => o.ownerId);
   const gameOwners = visible.map((o) => o.ownerId);
 
-  const [boards, facets, games, rematchGame] = await Promise.all([
+  const [boards, facets, games, rematchGame, gamesEver] = await Promise.all([
     prisma.board.findMany({
       where: {
         ownerId: { in: boardOwners },
@@ -59,6 +59,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
       take: 50,
     }),
     sp.rematch ? prisma.game.findUnique({ where: { id: sp.rematch }, select: { id: true, boardTitle: true, ownerId: true } }) : null,
+    prisma.game.count({ where: { ownerId: { in: gameOwners } } }),
   ]);
 
   const tags = [...new Set(facets.flatMap((b) => b.tags))].sort();
@@ -86,6 +87,21 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
             </div>
             <Link href={href({ rematch: undefined })} className="btn-ghost !py-1.5 text-sm">Cancel</Link>
           </div>
+        )}
+
+        {/* Shown until the first game: the whole flow in three lines. */}
+        {gamesEver === 0 && tab === "ACTIVE" && !rematch && (
+          <section aria-labelledby="first-game" className="rounded-2xl border border-gold/40 bg-gold/10 p-4 sm:p-5">
+            <h2 id="first-game" className="text-lg font-bold">Your first game takes about a minute</h2>
+            <ol className="mt-3 grid gap-3 text-sm sm:grid-cols-3">
+              <li><span className="font-bold text-gold">1. Start.</span> Press <b>▶ Start game</b> on a board below. The demo board is ready to play.</li>
+              <li><span className="font-bold text-gold">2. Show.</span> Open the display on your TV. It shows the room code and a QR code.</li>
+              <li><span className="font-bold text-gold">3. Play.</span> Players scan the QR with their phones. You run the game from this device.</li>
+            </ol>
+            <p className="mt-3 text-sm text-white/70">
+              Want your own questions? Use <b>New board</b>, or <Link href="/gallery" className="underline underline-offset-2 hover:text-white">copy one from the gallery</Link>. Playing alone to try it? Add practice bots in the lobby.
+            </p>
+          </section>
         )}
 
         {games.length > 0 && (
@@ -235,8 +251,25 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
             })}
           </div>
           {!list.length && (
-            <div className="card text-center text-white/60">
-              {q || sp.tag || sp.folder ? "No boards match those filters." : tab === "ACTIVE" ? "No boards yet — create one with “New board”." : tab === "ARCHIVED" ? "No archived boards." : "The trash is empty."}
+            <div className="card flex flex-col items-center gap-3 text-center text-white/60">
+              {q || sp.tag || sp.folder ? (
+                <>
+                  <span>No boards match those filters.</span>
+                  <Link href="/dashboard" className="btn-ghost !py-1.5 text-sm">Clear filters</Link>
+                </>
+              ) : tab === "ACTIVE" ? (
+                <>
+                  <span>No boards yet. Make one, or copy a ready-made board.</span>
+                  <div className="flex flex-wrap justify-center gap-2">
+                    <NewBoardButton />
+                    <Link href="/gallery" className="btn-ghost">Browse the gallery</Link>
+                  </div>
+                </>
+              ) : tab === "ARCHIVED" ? (
+                "No archived boards."
+              ) : (
+                "The trash is empty."
+              )}
             </div>
           )}
         </section>

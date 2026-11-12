@@ -15,6 +15,11 @@ const nextConfig: NextConfig = {
           { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=()" },
         ],
       },
+      // Signed-in and per-game pages have nothing for a search engine.
+      ...["/dashboard/:path*", "/admin/:path*", "/boards/:path*", "/host/:path*", "/play/:path*", "/display/:code", "/results/:path*", "/r/:path*", "/share/:path*", "/invite/:path*", "/login", "/try/claim", "/pair-expired", "/api/:path*"].map((source) => ({
+        source,
+        headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }],
+      })),
     ];
   },
   serverExternalPackages: ["@prisma/client", "bcryptjs", "nodemailer"],

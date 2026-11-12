@@ -1,8 +1,13 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { CodeEntry } from "@/components/CodeEntry";
 import { APP_NAME } from "@/shared/app";
 
-export const metadata = { title: "Join a game" };
+export const metadata = {
+  title: "Join a game",
+  description: "Enter the code on the big screen to join a trivia game from your phone. No app and no account needed.",
+  alternates: { canonical: "/join" },
+};
 
 export default async function JoinPage({ searchParams }: { searchParams: Promise<{ code?: string }> }) {
   const { code } = await searchParams;
@@ -18,6 +23,12 @@ export default async function JoinPage({ searchParams }: { searchParams: Promise
       <div className="w-full max-w-sm">
         <CodeEntry target="/play" cta="Join" />
       </div>
+      <p className="text-sm text-white/60">
+        Running the game?{" "}
+        <Link href="/dashboard" className="underline underline-offset-2 hover:text-white">Host a game</Link>
+        {" · "}
+        <Link href="/display" className="underline underline-offset-2 hover:text-white">Open the big screen</Link>
+      </p>
     </main>
   );
 }

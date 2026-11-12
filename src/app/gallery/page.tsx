@@ -7,7 +7,11 @@ import { APP_NAME } from "@/shared/app";
 import type { BoardContent } from "@/shared/board";
 
 export const dynamic = "force-dynamic";
-export const metadata: Metadata = { title: "Board gallery", description: "Quiz boards shared by hosts. Preview one, then copy it to play." };
+export const metadata: Metadata = {
+  title: "Trivia board gallery",
+  description: "Free, ready-to-play trivia boards shared by other hosts. Preview one, copy it, and start a game in a minute.",
+  alternates: { canonical: "/gallery" },
+};
 
 const PAGE = 48;
 

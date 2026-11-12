@@ -3,7 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-export function CodeEntry({ target, cta, initial = "" }: { target: string; cta: string; initial?: string }) {
+/** `focus={false}` on pages where the code box is not the main thing (it would pop the phone keyboard). */
+export function CodeEntry({ target, cta, initial = "", focus = true }: { target: string; cta: string; initial?: string; focus?: boolean }) {
   const router = useRouter();
   const [code, setCode] = useState(initial.toUpperCase());
   const valid = /^[A-Z0-9]{4,6}$/.test(code);
@@ -25,7 +26,7 @@ export function CodeEntry({ target, cta, initial = "" }: { target: string; cta: 
         autoComplete="off"
         autoCorrect="off"
         spellCheck={false}
-        autoFocus
+        autoFocus={focus}
         aria-label="Game code"
       />
       <button className="btn-primary py-3 text-lg" disabled={!valid}>

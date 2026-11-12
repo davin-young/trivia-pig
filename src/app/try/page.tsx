@@ -6,7 +6,11 @@ import { currentUser } from "@/server/session";
 import { TryEditor } from "./TryEditor";
 
 export const dynamic = "force-dynamic";
-export const metadata: Metadata = { title: "Try the board builder", description: "Build a quiz board right now, no account needed. Sign in when you want to save it and host a game." };
+export const metadata: Metadata = {
+  title: "Make a trivia board, no account needed",
+  description: "Build a quiz board in your browser right now. Sign in only when you want to save it and host a game.",
+  alternates: { canonical: "/try" },
+};
 
 /** The board builder with no account: the draft lives in this browser until the person signs in. */
 export default async function TryPage() {
