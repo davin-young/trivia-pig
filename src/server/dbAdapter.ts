@@ -34,6 +34,9 @@ export function dbAdapter(url = process.env.DATABASE_URL): PrismaPg {
     }
     url = process.env.DATABASE_URL;
   }
-  const { schema, ...pool } = dbSettings(url);
+  // Nothing connects until the first query, so a missing address must not stop the module from
+  // loading (unit tests and "next build" import it without a database). The placeholder host
+  // makes the eventual connection error say what is wrong.
+  const { schema, ...pool } = dbSettings(url || "postgresql://database-url-is-not-set.invalid/none");
   return new PrismaPg(pool, schema ? { schema } : undefined);
 }
