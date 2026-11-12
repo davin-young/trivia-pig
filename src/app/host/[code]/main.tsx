@@ -169,11 +169,14 @@ function LobbyControl() {
 // ------------------------------------------------------------------- board
 
 function BoardControl() {
-  const { view, act } = useHost();
+  const { view, act, emit } = useHost();
+  const [lobbyErr, setLobbyErr] = useState<string | null>(null);
   const [sel, setSel] = useState<{ cell: BoardCellView; cat: string } | null>(null);
   const board = view.board;
   if (!board) return null;
   const cols = board.categories.length;
+  // Before the first clue the host can still go back to the lobby (the server checks again).
+  const untouched = view.roundIndex === 0 && board.categories.every((cat) => cat.clues.every((cell) => !cell.used));
   return (
     <div className="flex h-full flex-col gap-2">
       <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -181,6 +184,22 @@ function BoardControl() {
         <span className="text-white/50">Control: <b className="text-gold">{contestantName(view, view.controlId)}</b></span>
         <span className="ml-auto text-white/40">Tap a clue to open it</span>
       </div>
+      {untouched && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-white/5 p-3 text-sm">
+          <span className="text-white/70">Started too soon? Nothing has been played yet.</span>
+          <button
+            className="btn-ghost ml-auto !py-2"
+            onClick={async () => {
+              setLobbyErr(null);
+              const r = await emit("host:backToLobby", {});
+              if (!r.ok) setLobbyErr(r.error);
+            }}
+          >
+            ← Back to lobby
+          </button>
+          {lobbyErr && <span className="w-full text-red-300">{lobbyErr}</span>}
+        </div>
+      )}
       {view.roundComplete && (
         <div className="flex flex-wrap items-center gap-2 rounded-xl border border-gold/50 bg-gold/10 p-3">
           <span className="font-semibold">Round complete!</span>

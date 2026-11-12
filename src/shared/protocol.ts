@@ -108,6 +108,7 @@ export const clientEvents = {
   "host:action": z.object({ action: hostIntentSchema }),
   "host:undo": z.object({ seq: z.number().int().positive(), undone: z.boolean().default(true) }),
   "host:undoLast": z.object({}),
+  "host:backToLobby": z.object({}),
   "host:sound": z.object({ id: z.enum(SOUNDBOARD) }),
   "player:join": z.object({
     name: z.string().trim().min(1).max(24),

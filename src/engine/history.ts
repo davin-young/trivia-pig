@@ -18,6 +18,28 @@ export class GameHistory {
     this.state = replay(setup, log);
   }
 
+  /** The game has started but nothing has been played yet: no clue opened, no points moved. */
+  get canReturnToLobby(): boolean {
+    const s = this.state;
+    return s.phase === "board" && s.roundIndex === 0 && !s.clue && s.scoreEvents.length === 0 && Object.keys(s.used).length === 0;
+  }
+
+  /**
+   * Take a game that was started too early back to the lobby, by undoing the start. Everyone
+   * who joined stays. Only while nothing has been played.
+   */
+  backToLobby(): boolean {
+    if (!this.canReturnToLobby) return false;
+    const start = this.log.findLast((e) => !e.undone && e.action.type === "game/start");
+    if (!start) return false;
+    // The "starting in..." countdown that led to the start goes too: left in place it has
+    // already run out, and the game would start again at once.
+    for (const e of this.log) {
+      if (e.seq < start.seq && !e.undone && (e.action.type === "game/countdown" || e.action.type === "game/countdownCancel")) e.undone = true;
+    }
+    return this.setUndone(start.seq, true) && this.state.phase === "lobby" && !this.state.startingAt;
+  }
+
   get nextSeq(): number {
     return (this.log.at(-1)?.seq ?? 0) + 1;
   }
