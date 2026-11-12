@@ -217,6 +217,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
                       <>
                         <StartGameButton boardId={b.id} rematchOf={rematch?.id} label={rematch ? "🔁 Rematch with this" : "▶ Start game"} />
                         <Link className="btn-ghost !px-3 !py-1.5 text-sm" href={`/boards/${b.id}/edit`}>Edit</Link>
+                        <Link className="btn-ghost !px-3 !py-1.5 text-sm" href={`/boards/${b.id}/practice`} title="Play this board alone against the clock">Practice</Link>
                         <ActionButton url={`/api/boards/${b.id}/duplicate`}>Duplicate</ActionButton>
                         <a className="btn-ghost !px-3 !py-1.5 text-sm" href={`/api/boards/${b.id}/export`}>Export</a>
                         <ActionButton url={`/api/boards/${b.id}`} method="PATCH" body={{ action: "archive" }}>Archive</ActionButton>
