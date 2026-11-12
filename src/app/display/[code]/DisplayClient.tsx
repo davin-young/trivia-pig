@@ -171,7 +171,7 @@ export default function DisplayClient({ code, mode = "display", obs = false, mut
       )}
       {watching && (
         <WatchBar
-          code={view.code}
+          code={code}
           canJoin={view.settings.audience}
           soundOn={soundOn}
           onSound={async () => {

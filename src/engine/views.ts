@@ -110,6 +110,8 @@ export interface HistoryItemView {
 export interface GameView {
   audience: Audience;
   code: string;
+  /** Hosts only: stands in for the room code in the watch, overlay and audience links. */
+  watchToken: string | null;
   /** Database id, used for the public results link. */
   gameId: string | null;
   title: string;
@@ -174,7 +176,7 @@ export interface GameView {
 
 export function buildView(
   s: GameState,
-  ctx: { audience: Audience; code: string; title: string; playerId?: string; log?: LogEntry[]; now?: number; gameId?: string },
+  ctx: { audience: Audience; code: string; title: string; playerId?: string; log?: LogEntry[]; now?: number; gameId?: string; watchToken?: string },
 ): GameView {
   const isHost = ctx.audience === "host";
   const round = s.board.rounds[s.roundIndex];
@@ -321,6 +323,7 @@ export function buildView(
   const view: GameView = {
     audience: ctx.audience,
     code: ctx.code,
+    watchToken: ctx.watchToken ?? null,
     gameId: ctx.gameId ?? null,
     title: ctx.title,
     theme: s.board.theme ?? null,

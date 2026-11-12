@@ -3,6 +3,7 @@ import { handshakeSchema } from "@/shared/protocol";
 import { parseCookies, sha256 } from "./crypto";
 import { capGrantRole, grantCookieName } from "./pairing";
 import { SESSION_COOKIE } from "./auth";
+import { isWatchToken } from "./watchToken";
 
 export interface GameRef {
   id: string;
@@ -12,6 +13,8 @@ export interface GameRef {
 
 export interface SocketAuthDeps {
   findGame(code: string): Promise<GameRef | null>;
+  /** The game a watch token was signed for (watch, overlay and audience links). */
+  findGameByWatchToken(token: string): Promise<GameRef | null>;
   userIdFromSession(token: string): Promise<string | null>;
   hostRoleFor(userId: string, ownerId: string): Promise<HostRole | null>;
   verifyGrant(token: string, gameId: string): Promise<{ userId: string; role: HostRole } | null>;
@@ -21,9 +24,9 @@ export interface SocketAuthDeps {
 }
 
 export type SocketIdentity =
-  | { role: "display"; game: GameRef; spectator: boolean }
+  | { role: "display"; game: GameRef; spectator: boolean; viaWatch: boolean }
   | { role: "host"; game: GameRef; userId: string; hostRole: HostRole }
-  | { role: "player"; game: GameRef; playerId: string | null };
+  | { role: "player"; game: GameRef; playerId: string | null; viaWatch: boolean };
 
 export class SocketAuthError extends Error {}
 
@@ -36,20 +39,23 @@ export async function authorizeSocket(rawAuth: unknown, cookieHeader: string | u
   const parsed = handshakeSchema.safeParse(rawAuth);
   if (!parsed.success) throw new SocketAuthError("Bad handshake");
   const { role, playerToken } = parsed.data;
+  // A watch token in place of the room code: its holder may watch or join the audience, no more.
+  const viaWatch = isWatchToken(parsed.data.code);
   const code = parsed.data.code.toUpperCase();
-  const game = await deps.findGame(code);
+  const game = viaWatch ? await deps.findGameByWatchToken(parsed.data.code) : await deps.findGame(code);
   if (!game) throw new SocketAuthError("Game not found");
+  if (viaWatch && role === "host") throw new SocketAuthError("Not authorized to host this game");
 
   if (role === "display") {
-    const spectator = parsed.data.watch === true;
+    const spectator = viaWatch || parsed.data.watch === true;
     // The browser shows a notice too, but the setting has to hold for a client that ignores it.
     if (spectator && !(await deps.spectatorsAllowed(game.id))) throw new SocketAuthError("Not authorized: watching is turned off for this game");
-    return { role, game, spectator };
+    return { role, game, spectator, viaWatch };
   }
 
   if (role === "player") {
     const playerId = playerToken ? await deps.playerIdForToken(game.id, sha256(playerToken)) : null;
-    return { role, game, playerId };
+    return { role, game, playerId, viaWatch };
   }
 
   const cookies = parseCookies(cookieHeader);
@@ -61,7 +67,7 @@ export async function authorizeSocket(rawAuth: unknown, cookieHeader: string | u
       if (hostRole) return { role: "host", game, userId, hostRole };
     }
   }
-  const grant = cookies[grantCookieName(code)];
+  const grant = cookies[grantCookieName(game.code)];
   if (grant) {
     const g = await deps.verifyGrant(grant, game.id);
     // A grant outlives the membership it was made from, so check that again on every connect.

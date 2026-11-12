@@ -73,6 +73,6 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     if (live) live.dispatch({ type: "game/end" }, `host:${user.id}`);
     else await prisma.game.update({ where: { id: game.id }, data: { status: "FINISHED", finishedAt: new Date() } });
   }
-  live?.redirectAll(next.code);
+  live?.redirectAll(next.code, next.id);
   return json({ id: next.id, code: next.code });
 }

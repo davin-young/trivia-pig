@@ -10,6 +10,7 @@ const grants: Record<string, { userId: string; role: "HOST" | "COHOST" | "SCOREK
 };
 const deps: SocketAuthDeps = {
   findGame: async (code) => (code === "ABCDE" ? game : null),
+  findGameByWatchToken: async (token) => (token.toLowerCase() === "g1watchtoken" ? game : null),
   userIdFromSession: async (t) => ({ "owner-session": "owner", "stranger-session": "stranger", "sk-session": "sk" })[t] ?? null,
   hostRoleFor: async (userId, ownerId) => (userId === ownerId ? "HOST" : userId === "sk" ? "SCOREKEEPER" : null),
   verifyGrant: async (t, gameId) => (gameId === "g1" ? (grants[t] ?? null) : null),
@@ -27,6 +28,15 @@ describe("socket auth", () => {
     const player = await authorizeSocket({ role: "player", code: "abcde", watch: true }, undefined, deps);
     expect(player).not.toHaveProperty("spectator");
     await expect(authorizeSocket({ role: "host", code: "abcde", watch: true }, undefined, deps)).rejects.toThrow();
+  });
+
+  it("a watch token lets someone watch or join the audience, never host or take the big screen", async () => {
+    await expect(authorizeSocket({ role: "display", code: "G1WATCHTOKEN" }, undefined, deps)).resolves.toMatchObject({ role: "display", spectator: true, viaWatch: true });
+    await expect(authorizeSocket({ role: "player", code: "g1watchtoken" }, undefined, deps)).resolves.toMatchObject({ role: "player", viaWatch: true });
+    await expect(authorizeSocket({ role: "host", code: "g1watchtoken" }, "jp_session=owner-session", deps)).rejects.toThrow("Not authorized");
+    await expect(authorizeSocket({ role: "display", code: "notarealtoken" }, undefined, deps)).rejects.toThrow("Game not found");
+    await expect(authorizeSocket({ role: "display", code: "g1watchtoken" }, undefined, { ...deps, spectatorsAllowed: async () => false })).rejects.toThrow("turned off");
+    await expect(authorizeSocket({ role: "player", code: "abcde" }, undefined, deps)).resolves.toMatchObject({ viaWatch: false });
   });
 
   it("rejects unknown games and malformed handshakes", async () => {

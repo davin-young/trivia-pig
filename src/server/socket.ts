@@ -9,6 +9,7 @@ import { authorizeSocket, SocketAuthError, type SocketAuthDeps } from "./socketA
 import { getManager, type GameSocket, type LiveGame } from "./live";
 import { prisma } from "./db";
 import { randomToken, sha256 } from "./crypto";
+import { gameIdFromWatchToken } from "./watchToken";
 import { userFromSessionToken } from "./auth";
 import { hostRoleFor } from "./access";
 import { pairing } from "./pairingStore";
@@ -19,6 +20,11 @@ export const prismaSocketAuthDeps: SocketAuthDeps = {
   async findGame(code) {
     const g = await getManager().findByCode(code);
     return g ? { id: g.id, code: g.code, ownerId: g.ownerId } : null;
+  },
+  async findGameByWatchToken(token) {
+    const id = gameIdFromWatchToken(token);
+    const g = id ? await prisma.game.findUnique({ where: { id }, select: { id: true, code: true, ownerId: true } }) : null;
+    return g;
   },
   async userIdFromSession(token) {
     return (await userFromSessionToken(token))?.id ?? null;
@@ -94,6 +100,7 @@ export function attachSocketServer(io: Server, deps: SocketAuthDeps = prismaSock
         hostRole: id.role === "host" ? id.hostRole : undefined,
         playerId: id.role === "player" ? id.playerId : undefined,
         spectator: id.role === "display" ? id.spectator : undefined,
+        viaWatch: id.role !== "host" && id.viaWatch ? true : undefined,
       };
       next();
     } catch (err) {
@@ -271,7 +278,8 @@ export const playerHandlers: Partial<Record<ClientEvent, Handler>> = {
       return { ok: true, data: { playerId: existing } };
     }
 
-    const audience = !!payload.audience;
+    // A watch token only ever lets someone into the audience.
+    const audience = !!payload.audience || !!socket.data.viaWatch;
     const playerId = `${audience ? "a" : "p"}_${nanoid(10)}`;
     const res = game.dispatch(
       audience ? { type: "player/join", playerId, name, signature: null, audience: true } : { type: "player/join", playerId, name, signature, avatar, teamId: payload.teamId ?? null },
@@ -319,9 +327,10 @@ export const playerHandlers: Partial<Record<ClientEvent, Handler>> = {
     lastCheerAt.set(socket, now);
     return game.dispatch({ type: "player/cheer", playerId: pid, contestantId: payload.contestantId }, `player:${pid}`).ok ? { ok: true } : { ok: false, error: "Couldn't change your pick" };
   },
-  "player:seats": (game) => ({ ok: true, data: { seats: game.state.settings.reclaimSeats ? game.emptySeats() : [] } }),
+  "player:seats": (game, socket) => ({ ok: true, data: { seats: game.state.settings.reclaimSeats && !socket.data.viaWatch ? game.emptySeats() : [] } }),
   "player:reclaim": async (game, socket, payload: { playerId: string }) => {
     if (!game.state.settings.reclaimSeats) return { ok: false, error: "The host turned this off. Ask them to let you back in." };
+    if (socket.data.viaWatch) return { ok: false, error: "This link is for watching. Ask the host for the room code to play." };
     // A phone that already has a seat, or was removed or banned from one, cannot take another.
     const bound = socket.data.playerId;
     if (bound && own(game.state.players, bound)) return { ok: false, error: "You already have a seat in this game." };

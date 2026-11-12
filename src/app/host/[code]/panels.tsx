@@ -234,10 +234,10 @@ export function DisplayPanel() {
             Streaming and spectators
             {watchers > 0 && <span className="font-normal text-white/60"> · {watchers} watching</span>}
           </h3>
-          {view.settings.spectators && <LinkRow label="Watch link" hint="Viewers follow the game on their own screen. They cannot buzz or score." url={`${origin}/watch/${view.code}`} />}
-          {view.settings.audience && <LinkRow label="Audience link" hint="Viewers join from their phone to send reactions and cheer for a player." url={`${origin}/join?code=${view.code}&audience=1`} />}
+          {view.settings.spectators && <LinkRow label="Watch link" hint="Viewers follow the game on their own screen. They cannot buzz or score." url={`${origin}/watch/${view.watchToken ?? view.code}`} />}
+          {view.settings.audience && <LinkRow label="Audience link" hint="Viewers join from their phone to send reactions and cheer for a player." url={`${origin}/join?code=${view.watchToken ?? view.code}&audience=1`} />}
           <LinkRow label="Streaming software (browser source)" hint="The big screen with no buttons; sound starts by itself. Add &mute=1 for no sound." url={`${origin}/display/${view.code}?obs=1`} />
-          <LinkRow label="Score overlay" hint="A see-through score strip to lay over your camera. Add ?pos=top to move it up." url={`${origin}/overlay/${view.code}`} />
+          <LinkRow label="Score overlay" hint="A see-through score strip to lay over your camera. Add ?pos=top to move it up." url={`${origin}/overlay/${view.watchToken ?? view.code}`} />
           <Toggle label="Streamer mode: keep the room code and QR off the big screen" checked={view.settings.hideCode} onChange={(v) => act({ type: "settings/update", settings: { hideCode: v } })} />
         </section>
       )}

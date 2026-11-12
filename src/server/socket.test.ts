@@ -165,3 +165,61 @@ describe("turning spectators off", () => {
     expect(player.sent).not.toContain("disconnect");
   });
 });
+
+describe("watch-link connections", () => {
+  function capture(game: LiveGame, data: Partial<GameSocket["data"]>) {
+    const states: { code: string; watchToken: string | null; showJoinQr: boolean; settings: Settings }[] = [];
+    const redirects: string[] = [];
+    const socket = {
+      id: `s${++n}`,
+      data: { role: "display", gameId: game.id, code: game.code, playerId: null, ...data },
+      emit: (event: string, payload: never) => {
+        if (event === "state") states.push(payload);
+        if (event === "redirect") redirects.push((payload as { code: string }).code);
+      },
+      disconnect: () => {},
+    } as unknown as GameSocket;
+    game.attach(socket);
+    return { socket, states, redirects };
+  }
+
+  it("never sends the room code to someone who came in through a watch link", () => {
+    const game = live();
+    const viewer = capture(game, { spectator: true, viaWatch: true });
+    const screen = capture(game, {});
+    const host = capture(game, { role: "host", userId: "owner", hostRole: "HOST" });
+    seat(game, "a", "Ann"); // a broadcast
+    game.sendState(viewer.socket);
+    expect(viewer.states.length).toBeGreaterThan(1);
+    for (const s of viewer.states) {
+      expect(JSON.stringify(s)).not.toContain("ABCDE");
+      expect(s.settings.hideCode).toBe(true);
+      expect(s.showJoinQr).toBe(false);
+      expect(s.watchToken).toBeNull();
+    }
+    expect(screen.states.at(-1)).toMatchObject({ code: "ABCDE", watchToken: null });
+    expect(screen.states.at(-1)!.settings.hideCode).toBe(false);
+    // Only the host is given the token, to build the links from.
+    expect(host.states.at(-1)!.watchToken).toMatch(/^g1[0-9a-f]{20}$/);
+  });
+
+  it("sends watch-link viewers to the next game by its watch token, everyone else by its code", () => {
+    const game = live();
+    const viewer = capture(game, { spectator: true, viaWatch: true });
+    const screen = capture(game, {});
+    game.redirectAll("NEXTC", "g2");
+    expect(screen.redirects).toEqual(["NEXTC"]);
+    expect(viewer.redirects).toHaveLength(1);
+    expect(viewer.redirects[0]).toMatch(/^g2[0-9a-f]{20}$/);
+  });
+
+  it("cannot be used to take a player's seat", async () => {
+    const game = live();
+    seat(game, "a", "Ann");
+    const ann = fakeSocket(game, { playerId: "a" }).socket;
+    game.detach(ann);
+    const viewer = fakeSocket(game, { viaWatch: true }).socket;
+    expect(await call("player:seats", game, viewer, {})).toEqual({ ok: true, data: { seats: [] } });
+    expect(await call("player:reclaim", game, viewer, { playerId: "a" })).toMatchObject({ ok: false, error: expect.stringContaining("watching") });
+  });
+});
