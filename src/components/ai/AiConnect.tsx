@@ -31,8 +31,8 @@ export function CopyBlock({ text, label, tall }: { text: string; label?: string;
 
 /** AI replies often arrive wrapped in a ```json fence or with a sentence around them. */
 function extractJson(text: string): unknown {
-  const fenced = /```(?:json)?\s*([\s\S]*?)```/i.exec(text);
-  const body = (fenced ? fenced[1] : text).trim();
+  // Everything from the first { to the last } is the board, whatever is wrapped around it.
+  const body = text;
   const start = body.indexOf("{");
   const end = body.lastIndexOf("}");
   if (start < 0 || end <= start) throw new Error("That does not look like a board. Paste the whole reply, from the first { to the last }.");

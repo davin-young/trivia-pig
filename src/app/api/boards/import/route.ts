@@ -36,8 +36,12 @@ export async function POST(req: Request) {
     return err("Couldn't read the upload");
   }
   // A board written by an AI assistant often arrives inside a ```json fence.
-  const fenced = /^\s*```(?:json)?\s*([\s\S]*?)```\s*$/i.exec(text);
-  if (fenced) text = fenced[1];
+  const trimmed = text.trim();
+  if (trimmed.startsWith("```") && trimmed.endsWith("```") && trimmed.length > 6) {
+    const firstLine = trimmed.indexOf("
+");
+    text = firstLine > 0 ? trimmed.slice(firstLine + 1, -3) : trimmed.slice(3, -3);
+  }
   if (!text.trim()) return err("The file is empty");
   if (text.length > 2_000_000) return err("File too large", 413);
 
