@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MAX_COMPENSATION_MS, RttTracker, orderBuzzes, pressedAt } from "./buzzQueue";
+import { BUZZ_WINDOW_MS, MAX_COMPENSATION_MS, RttTracker, orderBuzzes, pressedAt } from "./buzzQueue";
 
 describe("latency-fair buzz ordering", () => {
   it("a slow connection that pressed first beats a fast one that arrived first", () => {
@@ -35,13 +35,24 @@ describe("latency-fair buzz ordering", () => {
     expect(pressedAt(500, -5)).toBe(500);
   });
 
-  it("RTT tracker uses a median and ignores junk", () => {
+  it("RTT tracker uses the smallest recent sample and ignores junk", () => {
     const t = new RttTracker(5);
     expect(t.value).toBe(0);
     [40, 42, 900, 41, 39].forEach((n) => t.add(n));
-    expect(t.value).toBe(41);
+    expect(t.value).toBe(39);
     t.add(NaN);
     t.add(-1);
-    expect(t.value).toBe(41);
+    expect(t.value).toBe(39);
+    // One honest probe is enough to undo a run of delayed replies.
+    [900, 900, 900, 900].forEach((n) => t.add(n));
+    expect(t.value).toBe(39);
+  });
+
+  it("an inflated latency arriving at the end of the window cannot beat the buzz that opened it", () => {
+    const ordered = orderBuzzes([
+      { playerId: "honest", arrivedAt: 1000, rttMs: 0, order: 0, payload: null },
+      { playerId: "cheat", arrivedAt: 1000 + BUZZ_WINDOW_MS, rttMs: 5000, order: 1, payload: null },
+    ]);
+    expect(ordered.map((b) => b.playerId)).toEqual(["honest", "cheat"]);
   });
 });

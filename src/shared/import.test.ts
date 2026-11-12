@@ -51,6 +51,15 @@ describe("CSV import", () => {
     expect(b.rounds[0].categories[0].clues[1].dailyDouble).toBe(true);
     expect(b.final?.answer).toBe("GABA");
   });
+
+  it("stays small and fast when every row is a new category and value", () => {
+    const rows = Array.from({ length: 50_000 }, (_, i) => `1,Cat ${i},${i + 1},Clue ${i},Answer ${i},`);
+    const started = Date.now();
+    const b = boardFromCsv(["round,category,value,clue,answer,daily_double", ...rows].join("\n"));
+    expect(Date.now() - started).toBeLessThan(2000);
+    expect(b.rounds[0].categories.length).toBeLessThanOrEqual(12);
+    expect(b.rounds[0].values.length).toBeLessThanOrEqual(12);
+  });
 });
 
 describe("JSON import", () => {

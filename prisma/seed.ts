@@ -1,8 +1,10 @@
 /**
  * Seeds a demo host account and the "Kava & Kratom" board.
  *   npm run db:seed
- * Login: demo@example.com / demo1234  (change or delete it in production!)
+ * Login: demo@example.com / demo1234 in development. In production (the Docker image) the
+ * password is SEED_PASSWORD, or a random one printed once in the log line below.
  */
+import { randomBytes } from "node:crypto";
 import { PrismaClient, type Prisma } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { demoBoard, DEMO_TITLE } from "../src/shared/demoBoard";
@@ -11,7 +13,8 @@ const prisma = new PrismaClient();
 
 async function main() {
   const email = process.env.SEED_EMAIL ?? "demo@example.com";
-  const password = process.env.SEED_PASSWORD ?? "demo1234";
+  const chosen = process.env.SEED_PASSWORD;
+  const password = chosen || (process.env.NODE_ENV === "production" ? randomBytes(12).toString("base64url") : "demo1234");
   const existing = await prisma.user.findUnique({ where: { email } });
   const user =
     existing ??
@@ -24,7 +27,7 @@ async function main() {
       data: { ownerId: user.id, title: DEMO_TITLE, description: "Demo board: one category per round.", tags: ["demo"], content: demoBoard() as unknown as Prisma.InputJsonValue },
     });
   }
-  console.log(`Seeded ${email}${existing ? " (existing)" : ` / ${password}`} with "${DEMO_TITLE}"`);
+  console.log(`Seeded ${email}${existing ? " (existing)" : chosen ? " (password from SEED_PASSWORD)" : ` / ${password}`} with "${DEMO_TITLE}"`);
 }
 
 main()

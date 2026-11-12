@@ -12,6 +12,8 @@ import { Server } from "socket.io";
 import { attachSocketServer } from "@/server/socket";
 import { getManager } from "@/server/live";
 import { env } from "@/server/env";
+import { bodyLimitFor, capRequestBody } from "@/server/bodyLimit";
+import { CLIENT_IP_HEADER, resolveClientIp } from "@/server/rateLimit";
 import { prisma } from "@/server/db";
 import { checkDbEncoding, dbReady, startJanitor, startWatchdog, waitForDb, withTimeout } from "@/server/ops";
 
@@ -52,6 +54,9 @@ async function main() {
       });
       return;
     }
+    // Route handlers key their rate limits on this header; the client's own copy never survives.
+    req.headers[CLIENT_IP_HEADER] = resolveClientIp(req.headers, req.socket.remoteAddress, env.trustProxy);
+    if (!capRequestBody(req, res, bodyLimitFor(path, env.maxUploadBytes))) return;
     handle(req, res).catch((err) => {
       // The method and URL come from the client: strip line breaks so a request cannot forge log lines.
       const clean = (v: string | undefined) => String(v).replace(/[\r\n]/g, "");

@@ -2,7 +2,7 @@ import { createHmac } from "node:crypto";
 import * as client from "openid-client";
 import type { User } from "@prisma/client";
 import { prisma } from "./db";
-import { createUser, normaliseEmail } from "./auth";
+import { createUser, listedAdmin, normaliseEmail } from "./auth";
 import { env } from "./env";
 import { safeEqual } from "./crypto";
 
@@ -111,6 +111,21 @@ function decodeJwtPayload(jwt: string | undefined): Record<string, unknown> {
   }
 }
 
+/** The provider vouches for the email only with an explicit email_verified: true. */
+export function emailIsVerified(claims: Record<string, unknown>): boolean {
+  return typeof claims.email === "string" && claims.email !== "" && claims.email_verified === true;
+}
+
+/**
+ * Whether the account should be an admin after this sign-in. The role or a verified ADMIN_EMAILS
+ * entry grants it. Without either it is taken away only when OIDC_ADMIN_ROLE was set on purpose
+ * (the caller still keeps the last remaining admin).
+ */
+export function adminAfterLogin(o: { isAdmin: boolean; hasRole: boolean; listed: boolean; roleSet: boolean }): boolean {
+  if (o.hasRole || o.listed) return true;
+  return o.roleSet ? false : o.isAdmin;
+}
+
 export async function finishLogin(currentUrl: URL, pending: Pending): Promise<{ user: User; next: string }> {
   const config = await oidcConfig();
   const tokens = await client.authorizationCodeGrant(config, currentUrl, {
@@ -129,20 +144,35 @@ export async function finishLogin(currentUrl: URL, pending: Pending): Promise<{ 
   if (env.oidcRequiredRole && !roles.includes(env.oidcRequiredRole)) {
     throw new OidcDenied(`Your account needs the "${env.oidcRequiredRole}" role to host games.`);
   }
-  const makeAdmin = !!env.oidcAdminRole && roles.includes(env.oidcAdminRole);
+  const hasRole = !!env.oidcAdminRole && roles.includes(env.oidcAdminRole);
+  const verified = emailIsVerified(claims);
 
   let user = await prisma.user.findUnique({ where: { oidcSub: sub } });
-  if (!user && email && claims.email_verified !== false) {
-    // Link an existing local account with the same verified email.
-    user = await prisma.user.findUnique({ where: { email } });
-    if (user) user = await prisma.user.update({ where: { id: user.id }, data: { oidcSub: sub } });
+  if (!user && verified) {
+    // Link an existing local account with the same verified email. Whoever set its password or
+    // holds its sessions may not be this person, so both go.
+    const local = await prisma.user.findUnique({ where: { email } });
+    if (local) {
+      [user] = await prisma.$transaction([
+        prisma.user.update({ where: { id: local.id }, data: { oidcSub: sub, passwordHash: null } }),
+        prisma.session.deleteMany({ where: { userId: local.id } }),
+      ]);
+    }
   }
   if (!user) {
-    user = await createUser(email || `${sub}@oidc.local`, null, name);
+    // An unverified email is not stored: it could be someone else's address.
+    user = await createUser(verified ? email : `${sub}@oidc.local`, null, name, verified);
     user = await prisma.user.update({ where: { id: user.id }, data: { oidcSub: sub } });
   }
-  if ((makeAdmin && !user.isAdmin) || (name && !user.name)) {
-    user = await prisma.user.update({ where: { id: user.id }, data: { isAdmin: user.isAdmin || makeAdmin, name: user.name || name } });
+  // ADMIN_EMAILS counts when the provider verified the email this account is stored under.
+  const listed = listedAdmin(user.email, verified && email === user.email);
+  let isAdmin = adminAfterLogin({ isAdmin: user.isAdmin, hasRole, listed, roleSet: env.oidcAdminRoleSet });
+  if (user.isAdmin && !isAdmin) {
+    // Never demote the only remaining admin.
+    isAdmin = (await prisma.user.count({ where: { isAdmin: true, id: { not: user.id } } })) === 0;
+  }
+  if (isAdmin !== user.isAdmin || (name && !user.name)) {
+    user = await prisma.user.update({ where: { id: user.id }, data: { isAdmin, name: user.name || name } });
   }
   return { user, next: pending.next };
 }

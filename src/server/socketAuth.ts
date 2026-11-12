@@ -1,7 +1,7 @@
 import type { HostRole } from "@prisma/client";
 import { handshakeSchema } from "@/shared/protocol";
 import { parseCookies, sha256 } from "./crypto";
-import { grantCookieName } from "./pairing";
+import { capGrantRole, grantCookieName } from "./pairing";
 import { SESSION_COOKIE } from "./auth";
 
 export interface GameRef {
@@ -16,6 +16,8 @@ export interface SocketAuthDeps {
   hostRoleFor(userId: string, ownerId: string): Promise<HostRole | null>;
   verifyGrant(token: string, gameId: string): Promise<{ userId: string; role: HostRole } | null>;
   playerIdForToken(gameId: string, tokenHash: string): Promise<string | null>;
+  /** The game's "spectators" setting: may people follow along through the watch link? */
+  spectatorsAllowed(gameId: string): Promise<boolean>;
 }
 
 export type SocketIdentity =
@@ -38,7 +40,12 @@ export async function authorizeSocket(rawAuth: unknown, cookieHeader: string | u
   const game = await deps.findGame(code);
   if (!game) throw new SocketAuthError("Game not found");
 
-  if (role === "display") return { role, game, spectator: parsed.data.watch === true };
+  if (role === "display") {
+    const spectator = parsed.data.watch === true;
+    // The browser shows a notice too, but the setting has to hold for a client that ignores it.
+    if (spectator && !(await deps.spectatorsAllowed(game.id))) throw new SocketAuthError("Not authorized: watching is turned off for this game");
+    return { role, game, spectator };
+  }
 
   if (role === "player") {
     const playerId = playerToken ? await deps.playerIdForToken(game.id, sha256(playerToken)) : null;
@@ -57,7 +64,9 @@ export async function authorizeSocket(rawAuth: unknown, cookieHeader: string | u
   const grant = cookies[grantCookieName(code)];
   if (grant) {
     const g = await deps.verifyGrant(grant, game.id);
-    if (g) return { role: "host", game, userId: g.userId, hostRole: g.role };
+    // A grant outlives the membership it was made from, so check that again on every connect.
+    const hostRole = g && capGrantRole(g.role, await deps.hostRoleFor(g.userId, game.ownerId));
+    if (g && hostRole) return { role: "host", game, userId: g.userId, hostRole };
   }
   throw new SocketAuthError("Not authorized to host this game");
 }

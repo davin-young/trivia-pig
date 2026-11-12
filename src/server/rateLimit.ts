@@ -1,5 +1,4 @@
 import { gameNow } from "@/shared/clock";
-
 /** Token bucket: `capacity` burst, refilling `perSecond` tokens per second. */
 export class TokenBucket {
   private tokens: number;
@@ -33,4 +32,31 @@ export function hit(key: string, limit: number, windowMs: number, now = gameNow(
   }
   w.count++;
   return w.count <= limit;
+}
+
+type Headers1 = Record<string, string | string[] | undefined>;
+const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v)?.trim() || "";
+
+/**
+ * The address a request really came from. Behind a trusted proxy (TRUST_PROXY=true) that is
+ * Cloudflare's header, else the right-most X-Forwarded-For hop (the one our proxy added;
+ * anything to its left is whatever the client sent). Otherwise forwarding headers are ignored
+ * and the socket's own address is used.
+ */
+export function resolveClientIp(headers: Headers1, remoteAddress: string | undefined, trustProxy: boolean): string {
+  if (trustProxy) {
+    const cf = one(headers["cf-connecting-ip"]);
+    if (cf) return cf;
+    const hop = one(headers["x-forwarded-for"]).split(",").pop()?.trim();
+    if (hop) return hop;
+  }
+  return remoteAddress || "direct";
+}
+
+/** Header that server.ts sets on every request to the resolved address, replacing whatever the client sent. */
+export const CLIENT_IP_HEADER = "x-client-ip";
+
+/** Key for per-client limits in route handlers (they cannot see the socket; server.ts resolves it). */
+export function clientIp(req: Request): string {
+  return req.headers.get(CLIENT_IP_HEADER)?.trim() || "direct";
 }

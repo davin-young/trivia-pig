@@ -16,6 +16,15 @@ export async function verifyPassword(pw: string, hash: string): Promise<boolean>
   return bcrypt.compare(pw, hash);
 }
 
+let dummyHash: Promise<string> | null = null;
+/** Like verifyPassword, but an account without a password costs the same bcrypt work, so the
+ *  response time does not show whether the email exists. */
+export async function checkPassword(pw: string, hash: string | null | undefined): Promise<boolean> {
+  if (hash) return verifyPassword(pw, hash);
+  await verifyPassword(pw, await (dummyHash ??= hashPassword(randomToken())));
+  return false;
+}
+
 export async function createSession(userId: string): Promise<{ token: string; expiresAt: Date }> {
   const token = randomToken();
   const expiresAt = new Date(Date.now() + SESSION_DAYS * 86400_000);
@@ -39,21 +48,23 @@ export function normaliseEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
-/** First account on a fresh install, or anyone in ADMIN_EMAILS, is a super-admin. */
-export async function shouldBeAdmin(email: string): Promise<boolean> {
-  if (env.adminEmails.includes(email)) return true;
-  return (await prisma.user.count()) === 0;
+/** ADMIN_EMAILS only counts for an address its owner has proven (magic link, or verified by SSO). */
+export function listedAdmin(email: string, emailVerified: boolean): boolean {
+  return emailVerified && env.adminEmails.includes(normaliseEmail(email));
 }
 
-export async function createUser(email: string, password: string | null, name = ""): Promise<User> {
+/**
+ * The first account on a fresh install is a super-admin, and so is anyone in ADMIN_EMAILS whose
+ * email is proven. Password sign-up proves nothing, so it leaves emailVerified false.
+ */
+export async function createUser(email: string, password: string | null, name = "", emailVerified = false): Promise<User> {
   const e = normaliseEmail(email);
-  const user = await prisma.user.create({
-    data: {
-      email: e,
-      name: name || e.split("@")[0],
-      passwordHash: password ? await hashPassword(password) : null,
-      isAdmin: await shouldBeAdmin(e),
-    },
+  const passwordHash = password ? await hashPassword(password) : null;
+  const user = await prisma.$transaction(async (tx) => {
+    // One sign-up at a time, so two racing first sign-ups cannot both count zero users.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(7411001)`;
+    const isAdmin = listedAdmin(e, emailVerified) || (await tx.user.count()) === 0;
+    return tx.user.create({ data: { email: e, name: name || e.split("@")[0], passwordHash, isAdmin } });
   });
   // Every new host starts with the demo board so there's something to play right away.
   await prisma.board.create({
@@ -79,7 +90,7 @@ export async function consumeMagicLink(token: string): Promise<User | null> {
   const existing = await prisma.user.findUnique({ where: { email: link.email } });
   if (existing) return existing;
   if (!env.allowSignup) return null;
-  return createUser(link.email, null);
+  return createUser(link.email, null, "", true);
 }
 
 export async function sendMail(to: string, subject: string, text: string): Promise<boolean> {

@@ -4,14 +4,17 @@
  * "First packet to arrive wins" punishes players on slow Wi-Fi or mobile data.
  * Instead, the server measures each phone's round-trip time itself (so clients
  * can't lie about it), estimates when the button was actually pressed
- * (arrival − RTT/2, capped), and holds the first buzz for a short window so a
+ * (arrival − RTT/2, capped at the hold window), and holds the first buzz for a short window so a
  * slightly-later packet from an earlier press can still win.
  */
 
-/** Never credit a player with more than this much one-way latency. */
-export const MAX_COMPENSATION_MS = 150;
 /** How long the first buzz waits for competing buzzes before a winner is picked. */
 export const BUZZ_WINDOW_MS = 80;
+/**
+ * Never credit a player with more than this much one-way latency. It equals the window, so a
+ * buzz that only just made the window can never be dated before the buzz that opened it.
+ */
+export const MAX_COMPENSATION_MS = BUZZ_WINDOW_MS;
 
 export interface PendingBuzz<T = unknown> {
   playerId: string;
@@ -37,7 +40,10 @@ export function orderBuzzes<T>(pending: PendingBuzz<T>[], floor = 0): (PendingBu
     .sort((a, b) => a.at - b.at || a.order - b.order);
 }
 
-/** Rolling round-trip estimate: median of the last few samples resists spikes. */
+/**
+ * Rolling round-trip estimate: the smallest of the last few samples. A phone can answer a
+ * probe late but never early, so the minimum is the hardest figure to inflate.
+ */
 export class RttTracker {
   private samples: number[] = [];
   constructor(private size = 5) {}
@@ -47,8 +53,6 @@ export class RttTracker {
     if (this.samples.length > this.size) this.samples.shift();
   }
   get value(): number {
-    if (!this.samples.length) return 0;
-    const sorted = [...this.samples].sort((a, b) => a - b);
-    return sorted[Math.floor(sorted.length / 2)];
+    return this.samples.length ? Math.min(...this.samples) : 0;
   }
 }

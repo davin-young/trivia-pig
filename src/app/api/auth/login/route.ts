@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
-import { normaliseEmail, verifyPassword } from "@/server/auth";
+import { checkPassword, normaliseEmail } from "@/server/auth";
 import { env } from "@/server/env";
 import { clientIp, err, startSession } from "@/server/session";
 import { hit } from "@/server/rateLimit";
@@ -13,8 +13,12 @@ export async function POST(req: Request) {
   if (!hit(`login:${clientIp(req)}`, 10, 60_000)) return err("Too many attempts, try again in a minute", 429);
   const parsed = body.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return err("Enter your email and password");
-  const user = await prisma.user.findUnique({ where: { email: normaliseEmail(parsed.data.email) } });
-  if (!user?.passwordHash || !(await verifyPassword(parsed.data.password, user.passwordHash))) {
+  const email = normaliseEmail(parsed.data.email);
+  // Per account as well, so one account cannot be guessed at from many addresses.
+  if (!hit(`login:${email}`, 20, 15 * 60_000)) return err("Too many attempts for this account, try again later", 429);
+  const user = await prisma.user.findUnique({ where: { email } });
+  // Unknown emails do the same bcrypt work, so timing does not show which accounts exist.
+  if (!(await checkPassword(parsed.data.password, user?.passwordHash)) || !user) {
     return err("Wrong email or password", 401);
   }
   return startSession(NextResponse.json({ ok: true }), user.id);

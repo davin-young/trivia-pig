@@ -331,7 +331,7 @@ export function SettingsPanel() {
         </div>
         {!lobby && <span className="text-xs text-white/40">Mode can only change in the lobby.</span>}
       </Field>
-      <NumField label="Max players (0 = no limit)" value={s.maxPlayers} min={0} max={100000} onSave={(v) => set({ maxPlayers: v })} />
+      <NumField label="Max players (0 = up to 500)" value={s.maxPlayers} min={0} max={100000} onSave={(v) => set({ maxPlayers: v })} />
       {s.mode === "team" && <NumField label="Max teams (0 = no limit)" value={s.maxTeams} min={0} max={100000} onSave={(v) => set({ maxTeams: v })} />}
       <Toggle label="Allow late joins after the game starts" checked={s.allowLateJoin} onChange={(v) => set({ allowLateJoin: v })} />
       <h3 className="mt-2 font-semibold">Party</h3>
@@ -344,7 +344,7 @@ export function SettingsPanel() {
       <Toggle label="Streamer mode: keep the room code and QR off the big screen" checked={s.hideCode} onChange={(v) => set({ hideCode: v })} />
       <Toggle label="Watch link: anyone with the link can follow the game on their own screen" checked={s.spectators} onChange={(v) => set({ spectators: v })} />
       <Toggle label="Audience: extra people can join to react and cheer without playing" checked={s.audience} onChange={(v) => set({ audience: v })} />
-      {s.audience && <NumField label="Audience limit (0 = no limit)" value={s.maxAudience} min={0} max={100000} onSave={(v) => set({ maxAudience: v })} />}
+      {s.audience && <NumField label="Audience limit (0 = up to 5000)" value={s.maxAudience} min={0} max={100000} onSave={(v) => set({ maxAudience: v })} />}
       <span className="text-xs text-white/40">Links for viewers and streaming software are under Display.</span>
       <h3 className="mt-2 font-semibold">Accessibility</h3>
       <Field label="Timers">

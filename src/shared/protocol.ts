@@ -8,7 +8,12 @@ import { settingsSchema } from "@/engine/types";
  * itself (ids, timestamps, random Daily Double placement, team balancing).
  */
 
-const id = z.string().min(1).max(64);
+/** Ids index plain objects in the engine, so the names that reach Object.prototype are refused. */
+const id = z
+  .string()
+  .min(1)
+  .max(64)
+  .refine((v) => v !== "__proto__" && v !== "constructor" && v !== "prototype", "Invalid id");
 const shortText = z.string().max(2000);
 const int = z.number().int().min(-10_000_000).max(10_000_000);
 

@@ -15,8 +15,9 @@ export async function POST(req: Request) {
   if (!parsed.success) return err("Enter a valid email");
   const url = await createMagicLink(parsed.data.email);
   const sent = await sendMail(parsed.data.email, "Your Jeppidy sign-in link", `Sign in to Jeppidy:\n\n${url}\n\nThis link expires in 15 minutes.`);
-  // Without SMTP configured, the link is printed to the server log (see README).
-  return NextResponse.json({ ok: true, sent, devLink: !sent && !env.isProd ? url : undefined });
+  // Without SMTP configured, the link is printed to the server log (see README). It only goes
+  // back to the browser in development with MAGIC_LINK_DEV=true.
+  return NextResponse.json({ ok: true, sent, devLink: !sent && env.magicLinkDev ? url : undefined });
 }
 
 /** Follow a sign-in link. */

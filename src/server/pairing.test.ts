@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MemoryPairingStore, PAIRING_TTL_MS, PairingService } from "./pairing";
+import { MemoryPairingStore, PAIRING_TTL_MS, PairingService, capGrantRole } from "./pairing";
 
 function setup() {
   let now = 1_700_000_000_000;
@@ -41,5 +41,12 @@ describe("pairing tokens", () => {
     const r = await svc.redeem(token);
     advance(19 * 3600_000);
     expect(await svc.verifyGrant(r!.grantToken, "g")).toBeNull();
+  });
+
+  it("a grant is worth no more than the role its user holds now", () => {
+    expect(capGrantRole("HOST", "HOST")).toBe("HOST");
+    expect(capGrantRole("COHOST", "SCOREKEEPER")).toBe("SCOREKEEPER"); // demoted since pairing
+    expect(capGrantRole("SCOREKEEPER", "COHOST")).toBe("SCOREKEEPER"); // never more than was granted
+    expect(capGrantRole("COHOST", null)).toBeNull(); // removed from the team
   });
 });

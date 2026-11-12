@@ -68,6 +68,17 @@ export class PairingService {
   }
 }
 
+const ROLE_RANK: Record<HostRole, number> = { SCOREKEEPER: 0, COHOST: 1, HOST: 2 };
+
+/**
+ * What a grant is worth today: never more than the role its user still holds for the game's
+ * owner, and nothing once that role is gone.
+ */
+export function capGrantRole(granted: HostRole, current: HostRole | null): HostRole | null {
+  if (!current) return null;
+  return ROLE_RANK[current] < ROLE_RANK[granted] ? current : granted;
+}
+
 export function grantCookieName(code: string): string {
   return `jp_grant_${code.toUpperCase()}`;
 }
