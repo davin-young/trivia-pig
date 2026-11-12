@@ -23,7 +23,7 @@ const view = (g: GameHistory, audience: "host" | "display" | "player", playerId?
 
 describe("VIP start", () => {
   it("is the first human player, skipping bots and audience, and moves on when they leave", () => {
-    const { g, join, act } = lobby();
+    const { g, join, act } = lobby({ vipStart: true });
     join("bot", "Botty", { bot: true });
     join("w", "Watcher", { audience: true });
     expect(vipOf(g.state)).toBeNull();
@@ -35,11 +35,11 @@ describe("VIP start", () => {
     expect(vipOf(g.state)).toBe("b");
   });
 
-  it("can be turned off, and is only offered in the lobby", () => {
-    const off = lobby({ vipStart: false });
+  it("is off unless the host turns it on, and is only offered in the lobby", () => {
+    const off = lobby();
     off.join("a", "Ann");
     expect(view(off.g, "display").vipId).toBeNull();
-    const on = lobby();
+    const on = lobby({ vipStart: true });
     on.join("a", "Ann");
     on.act({ type: "game/start", dailyDoubles: {} });
     expect(view(on.g, "player", "a").vipId).toBeNull();

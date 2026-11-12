@@ -7,7 +7,7 @@ import { readingTimeMs } from "@/engine/reducer";
 import { sound } from "@/client/sound";
 import { useWakeLock } from "@/client/useWakeLock";
 import type { GameView } from "@/engine/views";
-import { TEAM_COLORS, type FxEvent, type PresenceView } from "@/shared/protocol";
+import { TEAM_COLORS, type FxEvent, type PresenceView, type RaceView } from "@/shared/protocol";
 import { Ink } from "@/components/Ink";
 import {
   APP_NAME,
@@ -70,7 +70,7 @@ export default function DisplayClient({ code, mode = "display", obs = false, mut
     else sound().play(fx.cue, idx);
   };
 
-  const { view, presence, status, error, now } = useGame({
+  const { view, presence, race, status, error, now } = useGame({
     role: "display",
     code,
     watch: watching,
@@ -138,7 +138,7 @@ export default function DisplayClient({ code, mode = "display", obs = false, mut
   return (
     <Shell hideCursor={obs}>
       <ConnBanner status={status} error={error} />
-      <Stage view={view} now={now} presence={presence} />
+      <Stage view={view} now={now} presence={presence} race={race} />
       {caption && (
         <div key={caption.key} className="anim-pop pointer-events-none fixed bottom-[3vmin] left-1/2 z-30 -translate-x-1/2 rounded-[1vmin] bg-black/85 px-[2.4vmin] py-[1vmin] text-[2.8vmin] font-semibold text-white" role="status" aria-live="polite">
           {caption.text}
@@ -225,10 +225,10 @@ function WatchBar({ code, canJoin, soundOn, onSound }: { code: string; canJoin: 
   );
 }
 
-function Stage({ view, now, presence }: { view: GameView; now: () => number; presence: PresenceView | null }) {
+function Stage({ view, now, presence, race }: { view: GameView; now: () => number; presence: PresenceView | null; race: RaceView | null }) {
   switch (view.phase) {
     case "lobby":
-      return <Lobby view={view} presence={presence} now={now} />;
+      return <Lobby view={view} presence={presence} now={now} race={race} />;
     case "board":
       return (
         <WithPodiums view={view}>
@@ -257,7 +257,53 @@ const TILTS = [-2.2, 1.6, -1.1, 2.4, -1.8, 0.9, 2, -2.6, 1.2, -0.7];
  * The room screen everyone sees while people join: where to go, the room code,
  * and a wall of name cards that pop in as each person finishes drawing theirs.
  */
-function Lobby({ view, presence, now }: { view: GameView; presence: PresenceView | null; now: () => number }) {
+/** The pig race on the big screen: one lane per leading pig, first to the flag wins. */
+function RaceTrack({ view, race, now }: { view: GameView; race: RaceView; now: () => number }) {
+  const left = useCountdown(race.phase === "countdown" ? race.startsAt : null, now);
+  const player = (id: string | null) => view.players.find((p) => p.id === id);
+  // Lanes keep their place (join order) so pigs move along the track, not up and down it.
+  const lanes = [...race.lanes].sort((a, b) => (player(a.id)?.index ?? 0) - (player(b.id)?.index ?? 0));
+  return (
+    <section className="rounded-[2vmin] bg-black/40 p-[1.6vmin] shadow-xl ring-1 ring-white/10" aria-label="Pig race">
+      <div className="mb-[1vmin] flex items-baseline gap-[2vmin]">
+        <h2 className="cat-text text-[3vmin] text-gold">🐖 Pig race</h2>
+        <div className="text-[2.2vmin] text-white/80">
+          {race.phase === "countdown" && <>Starts in <span className="money text-[3.4vmin] text-gold">{Math.max(1, Math.ceil((left ?? 0) / 1000))}</span>. Tap “I&apos;m in” on your phone!</>}
+          {race.phase === "running" && <>Tap your phone as fast as you can!</>}
+          {race.phase === "done" && <span className="anim-pop inline-block font-bold text-white">🏆 {player(race.winnerId)?.name ?? "Someone"} wins!</span>}
+        </div>
+        <div className="ml-auto text-[1.9vmin] text-white/50">{race.racers} racing{race.racers > lanes.length ? ` · showing the top ${lanes.length}` : ""}</div>
+      </div>
+      <div className="flex flex-col gap-[0.6vmin]">
+        {lanes.map((lane) => {
+          const p = player(lane.id);
+          const color = TEAM_COLORS[(p?.index ?? 0) % TEAM_COLORS.length];
+          const pct = Math.min(1, lane.taps / race.goal);
+          return (
+            <div key={lane.id} className="flex items-center gap-[1.2vmin]">
+              <div className="w-[18vmin] shrink-0 truncate text-right text-[2vmin] font-semibold" style={{ color }}>
+                {lane.wins > 0 && <span className="mr-[0.6vmin] text-white/70">🏆{lane.wins > 1 ? lane.wins : ""}</span>}
+                {p?.name ?? "Player"}
+              </div>
+              <div className="relative h-[3.6vmin] flex-1 rounded-full bg-white/10">
+                <div className="absolute inset-y-0 left-0 rounded-full opacity-40 transition-[width] duration-150 ease-linear" style={{ width: `${pct * 100}%`, background: color }} />
+                <span
+                  className="absolute top-1/2 text-[3.4vmin] leading-none transition-[left] duration-150 ease-linear"
+                  style={{ left: `calc(${pct} * (100% - 4vmin))`, transform: "translateY(-50%) scaleX(-1)" }}
+                >
+                  🐖
+                </span>
+              </div>
+              <span className="text-[2.6vmin] leading-none">{race.winnerId === lane.id ? "🏆" : "🏁"}</span>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function Lobby({ view, presence, now, race }: { view: GameView; presence: PresenceView | null; now: () => number; race: RaceView | null }) {
   const origin = useOrigin();
   const joinUrl = `${origin}/join?code=${view.code}`;
   const host = origin.replace(/^https?:\/\//, "");
@@ -284,29 +330,35 @@ function Lobby({ view, presence, now }: { view: GameView; presence: PresenceView
               <div className="text-[2.1vmin] text-white/70">The host will send you the link to join.</div>
             </div>
           </div>
-        ) : (
-          <div className="flex shrink-0 items-center gap-[2.5vmin] rounded-[2vmin] bg-black/35 p-[1.6vmin] pl-[2.6vmin] shadow-xl ring-1 ring-white/10">
-            <div className="flex flex-col gap-[0.6vmin]">
-              <div className="text-[2.2vmin] text-white/70">
-                On your phone, go to <span className="cat-text text-[2.8vmin] text-gold">{host}/join</span>
-              </div>
-              <div className="flex items-center gap-[1.6vmin]">
-                <span className="text-[2vmin] font-semibold uppercase tracking-[0.25em] text-white/60">Room code</span>
-                <div className="flex gap-[0.8vmin]" aria-label={`Room code ${view.code}`}>
-                  {view.code.split("").map((ch, i) => (
-                    <span key={i} className="money grid h-[10vmin] w-[7.6vmin] place-items-center rounded-[1.2vmin] bg-white text-[8vmin] leading-none text-[var(--board-edge)] shadow-lg">
-                      {ch}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            </div>
-            {origin && <Qr value={joinUrl} className="w-[15vmin] shrink-0 rounded-[1vmin] bg-white p-[0.6vmin] [&>svg]:h-auto [&>svg]:w-full" />}
-          </div>
-        )}
+        ) : null}
       </header>
 
-      <div ref={wall} className="grid min-h-0 flex-1 place-content-center overflow-hidden" style={{ gridTemplateColumns: `repeat(${fit.cols}, ${fit.w}px)`, gap: fit.gap, fontSize: fit.w * 0.075 }}>
+      <div className="flex min-h-0 flex-1 gap-[3vmin] portrait:flex-col">
+      {!view.settings.hideCode && (
+        // The way in, as big as the screen allows: alone in the middle until someone joins,
+        // then to one side so the names have room.
+        <div className={`flex shrink-0 flex-col items-center justify-center gap-[1.6vmin] ${n === 0 ? "flex-1" : ""}`}>
+          <div className="cat-text text-[3.4vmin] text-white">📱 Scan to join</div>
+          {origin && (
+            <Qr
+              value={joinUrl}
+              className={`${n === 0 ? "w-[50vmin]" : race ? "w-[26vmin]" : "w-[38vmin]"} shrink-0 rounded-[2vmin] bg-white p-[1.6vmin] shadow-2xl transition-[width] duration-500 [&>svg]:h-auto [&>svg]:w-full`}
+            />
+          )}
+          <div className="text-center text-[2.2vmin] text-white/70">
+            or go to <span className="cat-text text-[2.8vmin] text-gold">{host}/join</span> and enter
+          </div>
+          <div className="flex gap-[0.8vmin]" aria-label={`Room code ${view.code}`}>
+            {view.code.split("").map((ch, i) => (
+              <span key={i} className="money grid h-[8vmin] w-[6vmin] place-items-center rounded-[1.2vmin] bg-white text-[6.4vmin] leading-none text-[var(--board-edge)] shadow-lg">
+                {ch}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div ref={wall} className={`grid min-h-0 min-w-0 flex-1 place-content-center overflow-hidden ${n === 0 && !view.settings.hideCode ? "hidden" : ""}`} style={{ gridTemplateColumns: `repeat(${fit.cols}, ${fit.w}px)`, gap: fit.gap, fontSize: fit.w * 0.075 }}>
         {list.map((p) => {
           const color = (view.settings.mode === "team" && teamOf(p.teamId)?.color) || TEAM_COLORS[p.index % TEAM_COLORS.length];
           const away = !p.bot && presence?.players[p.id] !== undefined && presence.players[p.id] !== "online";
@@ -348,6 +400,10 @@ function Lobby({ view, presence, now }: { view: GameView; presence: PresenceView
         ))}
       </div>
 
+      </div>
+
+      {race && <RaceTrack view={view} race={race} now={now} />}
+
       <footer className="flex items-center justify-between gap-[3vmin] text-[2.6vmin]">
         <div className="text-white/80">
           <span className="money text-[3.6vmin] text-gold">{n}</span> {n === 1 ? "player is" : "players are"} in
@@ -357,7 +413,7 @@ function Lobby({ view, presence, now }: { view: GameView; presence: PresenceView
           <div className="rounded-full bg-red-600 px-[2vmin] py-[0.6vmin] text-[2.2vmin] font-bold">ROOM LOCKED · starting soon</div>
         ) : (
           <div className="animate-pulse text-white/70">
-            {n === 0 ? "Waiting for the first player…" : view.vipId ? `Draw your name to join. 👑 ${list.find((p) => p.id === view.vipId)?.name ?? "The host"} starts when everybody is in.` : "Draw your name to join. The host starts when everybody is in."}
+            {n === 0 ? "Waiting for the first player…" : view.vipId ? `Draw your name to join. 👑 ${list.find((p) => p.id === view.vipId)?.name ?? "The host"} starts when everybody is in.` : `Draw your name to join. The host starts when everybody is in.${view.settings.lobbyGame && !race ? " 🐖 Bored? Start a pig race from your phone." : ""}`}
           </div>
         )}
       </footer>

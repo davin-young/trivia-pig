@@ -187,7 +187,7 @@ async function main() {
   for (const c of [h2, d2, q1]) c.s.close();
 
   // ---- party features: VIP start, countdown, audience, avatars, family mode, seat reclaim, public results ----
-  const created3 = await api("/api/games", { method: "POST", cookie, body: JSON.stringify({ boardId: board.id, settings: { startCountdownSec: 2, familyMode: true } }) });
+  const created3 = await api("/api/games", { method: "POST", cookie, body: JSON.stringify({ boardId: board.id, settings: { startCountdownSec: 2, familyMode: true, vipStart: true } }) });
   const game3 = await created3.json();
   assert(created3.ok && game3.id, `third game created (${game3.code})`);
   const h3 = connect({ role: "host", code: game3.code }, cookie);
@@ -203,7 +203,10 @@ async function main() {
   const vipId = (ja.data as { playerId: string }).playerId;
   const bramId = (jb.data as { playerId: string }).playerId;
   let v3 = await d3.until((v) => v.players.length === 2, "display sees both players");
-  assert(v3.vipId === vipId, "first player in is the VIP");
+  assert(v3.vipId === vipId, "first player in is the VIP (when the host turned that on)");
+  const raced = new Promise<{ phase: string; racers: number } | null>((r) => d3.s.once("race", r));
+  assert((await pb.emit("player:tap", { n: 1 })).ok, "a player starts a pig race in the lobby");
+  assert((await raced)?.phase === "countdown", "the display is told the race is counting down");
   assert(v3.players[0].signature === null && v3.players[0].avatar === null, "family mode keeps unapproved drawings off the display");
   const hv3 = await h3.until((v) => v.players.length === 2, "host sees both players");
   assert(!!hv3.players[0].signature && !!hv3.players[0].avatar && hv3.players[0].signatureHidden, "host can see the drawing and avatar awaiting approval");

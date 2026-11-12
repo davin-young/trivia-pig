@@ -35,8 +35,10 @@ export const settingsSchema = z.object({
   dailyDoublesDouble: z.number().int().min(0).max(5).default(2),
   finalTimerSec: z.number().int().min(10).max(300).default(30),
   multiColor: z.boolean().default(true),
-  /** The first player to join can start the game from their phone. */
-  vipStart: z.boolean().default(true),
+  /** The first player to join can start the game from their phone. Off unless the host turns it on. */
+  vipStart: z.boolean().default(false),
+  /** Pig race: a tap game on phones while the room waits in the lobby. */
+  lobbyGame: z.boolean().default(true),
   /** Seconds of "starting in..." on the big screen before the board appears (0 = start at once). */
   startCountdownSec: z.number().int().min(0).max(30).default(5),
   /** Let people watch as audience: they react and cheer but do not buzz or score. */
