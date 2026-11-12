@@ -4,6 +4,7 @@ import { prisma } from "./db";
 import { randomToken, sha256 } from "./crypto";
 import { apiUser, err } from "./session";
 import { hit } from "./rateLimit";
+import { APP_TOKEN_PREFIX, userForAccessToken, wwwAuthenticate } from "./oauth";
 
 /**
  * Personal access tokens for the board API and the MCP server.
@@ -46,8 +47,15 @@ export async function apiAuth(req: Request): Promise<ApiAuth | Response> {
   const unauthorized = () =>
     new Response(JSON.stringify({ error: "Invalid or revoked token" }), {
       status: 401,
-      headers: { "content-type": "application/json", "www-authenticate": 'Bearer realm="Trivia Pig"' },
+      headers: { "content-type": "application/json", "www-authenticate": wwwAuthenticate("invalid_token") },
     });
+  // An app connected by sign-in (OAuth): same reach as a personal token, but it expires and refreshes.
+  if (token.startsWith(APP_TOKEN_PREFIX) && token.length <= 200) {
+    const found = await userForAccessToken(token);
+    if (!found) return unauthorized();
+    if (!hit(`apitoken:${found.grantId}`, PER_MINUTE, 60_000)) return err("Too many requests. Wait a minute and try again.", 429);
+    return { user: found.user, via: "token", tokenId: found.grantId };
+  }
   if (!token.startsWith(TOKEN_PREFIX) || token.length > 200) return unauthorized();
   const row = await prisma.apiToken.findUnique({ where: { tokenHash: sha256(token) }, include: { user: true } });
   if (!row) return unauthorized();

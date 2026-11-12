@@ -157,3 +157,18 @@ describe("bots and awards", () => {
     expect(view(g, "display").awards?.length).toBe(awards.length);
   });
 });
+
+describe("everyone answers", () => {
+  it("opens every clue for all players to write, with no buzzer", () => {
+    const { g, host, player, clue } = setup({ everyoneAnswers: true });
+    expect(host({ type: "clue/open", clueId: clue(0, 0) }).ok).toBe(true);
+    expect(g.state.clue?.allPlay?.stage).toBe("writing");
+    expect(host({ type: "buzzers/unlock" }).ok).toBe(false);
+    expect(player({ type: "player/allPlayAnswer", playerId: "a", drawing: null, typed: "x" }).ok).toBe(true);
+  });
+  it("is off by default", () => {
+    const { g, host, clue } = setup();
+    host({ type: "clue/open", clueId: clue(0, 0) });
+    expect(g.state.clue?.allPlay).toBeNull();
+  });
+});

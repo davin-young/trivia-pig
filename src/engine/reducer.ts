@@ -487,7 +487,7 @@ function reduce(s: GameState, entry: LogEntry, fx: Cue[]): boolean {
       s.used[a.clueId] = true;
       s.phase = "clue";
       s.timer = null;
-      if (a.allPlay && !isDD) {
+      if ((a.allPlay || s.settings.everyoneAnswers) && !isDD) {
         const endsAt = at + scaled(s, s.settings.allPlayTimerSec * 1000);
         clue.allPlay = { stage: "writing", endsAt, answers: {}, typed: {}, judged: {} };
         s.timer = { startedAt: at, endsAt, label: "allplay" };

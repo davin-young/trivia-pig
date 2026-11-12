@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { currentUser } from "@/server/session";
 import { AppNav } from "@/components/AppNav";
-import { CopyBlock, PasteBoard, TokenManager } from "@/components/ai/AiConnect";
+import { ConnectedApps, CopyBlock, PasteBoard, TokenManager } from "@/components/ai/AiConnect";
 import { APP_NAME } from "@/shared/app";
 import { siteUrl } from "@/shared/site";
 import { aiPrompt } from "@/shared/simpleBoard";
@@ -73,12 +73,24 @@ export default async function AiPage() {
         <section className="card flex flex-col gap-3">
           <h2 className="text-xl font-bold">2. Connect your assistant</h2>
           <p className="text-sm text-white/75">
-            For Claude Code, Cursor and other apps that support MCP: the assistant saves boards straight to your account and can edit them later.
-            A token reaches <b>only your own boards</b>, never a game in progress, and you can revoke it at any time.
+            For Claude, Cursor and other apps that support MCP: the assistant saves boards straight to your account and can edit them later.
+            It reaches <b>only your own boards</b>, never a game in progress, and you can disconnect it at any time.
+          </p>
+          <h3 className="font-semibold">The easy way: sign in</h3>
+          <p className="text-sm text-white/75">
+            Add this address as a connector (or remote MCP server) in your AI app. It opens a {APP_NAME} page in your browser, you press Allow, and it is connected. No token to copy.
           </p>
           <CopyBlock label="MCP server address" text={`${origin}/mcp`} />
+          <CopyBlock label="Claude Code: run this once in a terminal, then /mcp to sign in" text={`claude mcp add --transport http trivia-pig ${origin}/mcp`} />
+          {user && (
+            <>
+              <h3 className="mt-1 font-semibold">Connected apps</h3>
+              <ConnectedApps />
+            </>
+          )}
+          <h3 className="mt-1 font-semibold">Or use a token</h3>
+          <p className="text-sm text-white/75">For scripts, and for apps that take a header but cannot open a browser.</p>
           {user ? <TokenManager origin={origin} /> : signIn}
-          <p className="text-xs text-white/50">Apps that only accept sign-in by browser (no token header) are not supported yet.</p>
         </section>
 
         <section className="card flex flex-col gap-3">
