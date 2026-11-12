@@ -99,7 +99,7 @@ The stack is built to come back by itself. You should not need to touch it.
 | Host reboot / power cut | All services start again on boot (`restart: unless-stopped`; make sure Docker itself starts on boot: `sudo systemctl enable docker`). The app waits for Postgres and retries migrations, so start order doesn't matter. |
 | Postgres restarts or is briefly unreachable | Games keep running from memory. Saves retry with backoff until the database is back, and nothing is evicted from memory while unsaved. If saving keeps failing, the host screen shows a red "not being saved" banner until it recovers. |
 | Internet or tunnel drops | `cloudflared` reconnects by itself. Devices show "reconnecting" and resume when it returns. |
-| A deploy goes wrong | `scripts/update.sh` waits for the new container to report healthy and prints its logs if it doesn't. |
+| A deploy goes wrong | `scripts/update.sh` waits for the new container to report healthy. If it doesn't, it prints the logs, puts the previous version back, and does not try that version again. |
 | Bad data or a mistake | Restore last night's backup with `scripts/restore.sh` (it saves the current database first). |
 
 This was tested by hard-killing the server in the middle of a clue (`npx tsx scripts/crash-test.ts`):
@@ -107,19 +107,55 @@ score, seats, the open clue, and the host's undo history all came back.
 
 **Health endpoints**
 - `/healthz`: liveness (used by the Docker health check).
-- `/readyz`: JSON with database status, version, uptime, live games, connected devices, and
-  unsaved games. Point Uptime Kuma (or similar) at `https://triviapig.lol/readyz`.
+- `/readyz`: JSON with database status, version, uptime, live games, connected devices,
+  devices in games still being played (`playing`), seconds since those games last changed
+  (`idleSec`), and unsaved games. Point Uptime Kuma (or similar) at `https://triviapig.lol/readyz`.
 
 `docker compose ps` shows the health of each service. The `backup` service turns *unhealthy* if
 the newest good backup is more than 26 hours old.
+
+## Automatic deploys
+The pipeline, end to end:
+
+1. A push to `main` runs **CI** (lint, type check, unit tests, an end-to-end game, and a Docker
+   boot and crash-recovery test).
+2. Only if CI passes, the **Docker image** workflow publishes `ghcr.io/<owner>/<repo>:latest`
+   (also tagged `sha-<commit>`).
+3. On this host, a systemd timer runs `scripts/update.sh` every two minutes. It pulls the image
+   and, when it is new, switches to it **at the next quiet moment**: no device connected to a game
+   that is still being played, or no change in those games for `DEPLOY_IDLE_MIN` minutes
+   (default 20). A game is never interrupted; a finished game or a forgotten display tab does
+   not hold things up.
+4. The new container must report healthy. If it does not, the previous image is started again
+   and that version is skipped until a newer one is published.
+
+The host pulls; nothing on the internet needs a way in, so this works behind a tunnel.
+
+Set it up once:
+
+```sh
+# in .env
+APP_IMAGE=ghcr.io/<owner>/<repo>:latest
+APP_PULL_POLICY=always
+
+sudo ./scripts/install-autodeploy.sh
+```
+
+Without `APP_IMAGE` the same timer builds from the git checkout instead (it then follows `main`
+directly, without waiting for CI). `sudo ./scripts/install-autodeploy.sh remove` turns it off.
+
+Why not Kubernetes: a live game lives in the memory of one server process, so a second replica
+could not take over its players anyway. What protects a game is waiting for it to end, and the
+fact that every action is saved, so even a forced restart resumes where it stopped.
 
 ## Operations
 Run these from `deploy/homelab`.
 
 | Task | Command |
 |---|---|
-| Update | `./scripts/update.sh` (pulls, rebuilds, restarts, waits for healthy; skips if a game is in progress unless `FORCE=1`) |
-| Update nightly | add to cron: `30 5 * * * /path/to/deploy/homelab/scripts/update.sh >> /var/log/triviapig-update.log 2>&1` |
+| Update automatically | `sudo ./scripts/install-autodeploy.sh` once (see *Automatic deploys* below) |
+| Update by hand | `./scripts/update.sh` (waits for a quiet moment; `FORCE=1 ./scripts/update.sh` deploys now) |
+| See what the deployer did | `journalctl -u triviapig-deploy -n 50` |
 | Status | `docker compose ps` and `curl -s localhost:3000/readyz` from inside: `docker compose exec app node -e "fetch('http://127.0.0.1:3000/readyz').then(r=>r.text()).then(console.log)"` |
 | Logs | `docker compose logs -f app` (rotated: 5 files of 10 MB per service) |
 | Backups | `./data/backups/daily` (14 days) and `monthly` (6 months): database dump plus an archive of uploaded images, verified after writing |

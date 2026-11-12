@@ -10,3 +10,5 @@ next-env.d.ts
 coverage
 deploy/homelab/.env
 deploy/homelab/data
+deploy/homelab/.deploy-*
+deploy/homelab/.update.lock

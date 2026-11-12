@@ -46,6 +46,8 @@ export class LiveGame {
   private saving: Promise<void> = Promise.resolve();
   private timers = new Map<string, NodeJS.Timeout>();
   dirty = false;
+  /** When the game last changed (steady clock); lets a deploy wait for a quiet moment. */
+  lastActivity = gameNow();
   private saveFailures = 0;
   private pendingBuzzes: PendingBuzz<(ok: boolean) => void>[] = [];
   private buzzTimer: NodeJS.Timeout | null = null;
@@ -115,6 +117,7 @@ export class LiveGame {
   }
 
   private afterChange(fx: Cue[], action: GameAction | null) {
+    this.lastActivity = gameNow();
     this.scheduleSave();
     this.broadcast();
     for (const cue of fx) this.emitFx(cue);
@@ -622,10 +625,16 @@ export class GameManager {
 
   stats() {
     const games = [...this.games.values()];
+    const live = games.filter((g) => g.state.phase !== "finished" && g.sockets.size > 0);
     return {
       games: games.length,
       sockets: games.reduce((n, g) => n + g.sockets.size, 0),
       unsaved: games.filter((g) => g.unsaved).length,
+      // For deploys: devices in games that are still being played, and how long since any of
+      // those games last changed (null when there is none). A finished game, or a display tab
+      // left open overnight, should not hold up an update.
+      playing: live.reduce((n, g) => n + g.sockets.size, 0),
+      idleSec: live.length ? Math.round((gameNow() - Math.max(...live.map((g) => g.lastActivity))) / 1000) : null,
     };
   }
 }
