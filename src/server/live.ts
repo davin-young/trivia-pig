@@ -12,6 +12,7 @@ import { computeAwards } from "@/engine/awards";
 import { prisma } from "./db";
 import { BUZZ_WINDOW_MS, orderBuzzes, type PendingBuzz } from "./buzzQueue";
 import { watchTokenFor } from "./watchToken";
+import { recordResults } from "./playerResults";
 
 export interface SocketData {
   role: "display" | "host" | "player";
@@ -585,6 +586,7 @@ export class LiveGame {
         const wasFailing = this.saveFailures >= 2;
         this.saveFailures = 0;
         if (wasFailing) this.broadcastPresence();
+        this.syncResults(s);
       })
       .catch((err) => {
         // Database hiccup: keep the game running from memory and keep retrying
@@ -597,6 +599,22 @@ export class LiveGame {
         if (!this.disposed) this.scheduleSave(Math.min(15_000, 1000 * 2 ** Math.min(this.saveFailures - 1, 4)));
       });
     return this.saving;
+  }
+
+  /** null until the first save: a game loaded after a restart may have results to take back. */
+  private resultsSaved: boolean | null = null;
+
+  /**
+   * Saved players get their result when the game ends, and lose it again if the end is
+   * undone. A failure here never disturbs the game: it is logged and retried on the next save.
+   */
+  private syncResults(s: GameState) {
+    const finished = s.phase === "finished";
+    if (!finished && this.resultsSaved === false) return;
+    recordResults(this.id, this.title, s).then(
+      () => (this.resultsSaved = finished),
+      (err) => console.error("[game %s] could not save player results", this.code, err instanceof Error ? err.message : err),
+    );
   }
 
   private disposed = false;

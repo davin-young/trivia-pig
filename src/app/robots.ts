@@ -11,7 +11,7 @@ export default function robots(): MetadataRoute.Robots {
       {
         userAgent: "*",
         allow: "/",
-        disallow: ["/api/", "/mcp", "/oauth/", "/dashboard", "/admin", "/boards/", "/host/", "/play/", "/display/", "/watch/", "/overlay/", "/results/", "/r/", "/share/", "/invite/", "/login", "/try/claim", "/pair-expired"],
+        disallow: ["/api/", "/mcp", "/oauth/", "/dashboard", "/admin", "/boards/", "/host/", "/play/", "/display/", "/watch/", "/overlay/", "/results/", "/r/", "/share/", "/player", "/invite/", "/login", "/try/claim", "/pair-expired"],
       },
     ],
     sitemap: `${base}/sitemap.xml`,

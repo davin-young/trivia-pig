@@ -24,6 +24,13 @@ own copy (see [Quick start](#quick-start-docker)). A public instance runs at <ht
   big room code and QR, original lobby music, and a wall of hand-drawn name cards that pop in as
   people join. Cards resize to fit, so 3 players or 300 both fill the screen. There is no cap on
   players or teams unless the host sets one.
+- **Player card (optional).** Tick "Remember me on this device" when joining and the next game
+  starts with your name, signature and doodle filled in, and finished games add to your stats
+  (games, wins, best score, right answers) at `/player`. The device is found again by a cookie
+  holding a random secret; only its hash is stored. Signing in is optional and keeps the card on
+  every device. A player can change or delete everything from that page. Nobody needs one to play.
+- **Back to lobby.** If a game starts before everyone is ready, the host can send it back to the
+  lobby until the first clue is opened. Everyone who joined stays.
 - **Board themes.** Each board can have its own look: eight presets or your own board colour,
   accent colour and lettering. The big screen, phones and host controls all follow it. Colours are
   adjusted automatically if a pick would make clue text hard to read.

@@ -39,7 +39,7 @@ const nextConfig: NextConfig = {
         ],
       },
       // Signed-in and per-game pages have nothing for a search engine.
-      ...["/dashboard/:path*", "/admin/:path*", "/boards/:path*", "/host/:path*", "/play/:path*", "/display/:code", "/watch/:path*", "/overlay/:path*", "/results/:path*", "/r/:path*", "/share/:path*", "/invite/:path*", "/login", "/try/claim", "/pair-expired", "/api/:path*"].map((source) => ({
+      ...["/dashboard/:path*", "/admin/:path*", "/boards/:path*", "/host/:path*", "/play/:path*", "/display/:code", "/watch/:path*", "/overlay/:path*", "/results/:path*", "/r/:path*", "/share/:path*", "/player", "/invite/:path*", "/login", "/try/claim", "/pair-expired", "/api/:path*"].map((source) => ({
         source,
         headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }],
       })),

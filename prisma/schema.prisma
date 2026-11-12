@@ -56,6 +56,7 @@ model User {
   apiTokens   ApiToken[]
   oauthCodes  OAuthCode[]
   oauthGrants OAuthGrant[]
+  player      PlayerProfile?
 }
 
 /// A personal access token for the board API and the MCP server. Only its hash is stored.
@@ -247,10 +248,50 @@ model GamePlayer {
   game      Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
   playerId  String
   tokenHash String
+  /// The saved player sitting in this seat, if they chose to be remembered.
+  profileId String?
+  profile   PlayerProfile? @relation(fields: [profileId], references: [id], onDelete: SetNull)
   createdAt DateTime @default(now())
 
   @@unique([gameId, playerId])
   @@index([tokenHash])
+  @@index([profileId])
+}
+
+/// A player's saved name, drawings and results. Found again by a cookie on the device (only
+/// its hash is stored) or by the account it was saved to. Nobody needs one to play.
+model PlayerProfile {
+  id         String   @id @default(cuid())
+  tokenHash  String   @unique
+  userId     String?  @unique
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  name       String
+  signature  Json?
+  avatar     Json?
+  createdAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+
+  results PlayerResult[]
+  seats   GamePlayer[]
+}
+
+/// One finished game for one saved player. gameId is not a relation: the result outlives the game.
+model PlayerResult {
+  id          String        @id @default(cuid())
+  profileId   String
+  profile     PlayerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  gameId      String
+  boardTitle  String
+  score       Int
+  place       Int
+  contestants Int
+  right       Int
+  wrong       Int
+  team        Boolean       @default(false)
+  finishedAt  DateTime
+
+  @@unique([profileId, gameId])
+  @@index([gameId])
 }
 
 model PairingToken {
