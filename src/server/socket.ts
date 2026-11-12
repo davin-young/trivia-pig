@@ -229,6 +229,10 @@ const hostHandlers: Partial<Record<ClientEvent, Handler>> = {
     if (socket.data.hostRole === "SCOREKEEPER") return { ok: false, error: "Not allowed" };
     return game.undoLast() ? { ok: true } : { ok: false, error: "Nothing to undo" };
   },
+  "host:backToLobby": (game, socket) => {
+    if (socket.data.hostRole === "SCOREKEEPER") return { ok: false, error: "Not allowed" };
+    return game.backToLobby() ? { ok: true } : { ok: false, error: "The game is already under way. Use History to undo steps." };
+  },
   "host:sound": (game, socket, payload: { id: string }) => {
     if (socket.data.hostRole === "SCOREKEEPER") return { ok: false, error: "Not allowed" };
     game.emitSound(payload.id);

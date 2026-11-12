@@ -254,6 +254,33 @@ describe("undo history", () => {
   });
 });
 
+describe("back to lobby", () => {
+  it("returns an untouched game to the lobby and keeps everyone, including a late joiner", () => {
+    const { g, player, host } = withPlayers();
+    player({ type: "player/join", playerId: "d", name: "Di", signature: null });
+    expect(g.canReturnToLobby).toBe(true);
+    expect(g.backToLobby()).toBe(true);
+    expect(g.state.phase).toBe("lobby");
+    expect(Object.keys(g.state.players).sort()).toEqual(["a", "b", "c", "d"]);
+    expect(host({ type: "game/start", dailyDoubles: {} }).ok).toBe(true);
+    expect(g.state.phase).toBe("board");
+  });
+
+  it("refuses once a clue has been opened or points have moved", () => {
+    const opened = withPlayers();
+    opened.host({ type: "clue/open", clueId: opened.clue(0, 0, 0) });
+    expect(opened.g.backToLobby()).toBe(false);
+    expect(opened.g.state.phase).toBe("clue");
+
+    const scored = withPlayers();
+    scored.host({ type: "score/adjust", contestantId: "a", delta: 100 });
+    expect(scored.g.backToLobby()).toBe(false);
+
+    const lobby = game();
+    expect(lobby.g.backToLobby()).toBe(false);
+  });
+});
+
 describe("final jeopardy reveal flow", () => {
   function finalGame() {
     const ctx = withPlayers();

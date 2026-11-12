@@ -18,6 +18,25 @@ export class GameHistory {
     this.state = replay(setup, log);
   }
 
+  /** The game has started but nothing has been played yet: no clue opened, no points moved. */
+  get canReturnToLobby(): boolean {
+    const s = this.state;
+    return s.phase === "board" && s.roundIndex === 0 && !s.clue && s.scoreEvents.length === 0 && Object.keys(s.used).length === 0;
+  }
+
+  /**
+   * Take a game that was started too early back to the lobby, by undoing the start. Everyone
+   * who joined stays. Only while nothing has been played.
+   */
+  backToLobby(): boolean {
+    if (!this.canReturnToLobby) return false;
+    for (let i = this.log.length - 1; i >= 0; i--) {
+      const e = this.log[i];
+      if (!e.undone && e.action.type === "game/start") return this.setUndone(e.seq, true) && this.state.phase === "lobby";
+    }
+    return false;
+  }
+
   get nextSeq(): number {
     return (this.log.at(-1)?.seq ?? 0) + 1;
   }

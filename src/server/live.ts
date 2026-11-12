@@ -132,6 +132,12 @@ export class LiveGame {
     return true;
   }
 
+  backToLobby(): boolean {
+    if (!this.history.backToLobby()) return false;
+    this.afterChange([], null);
+    return true;
+  }
+
   private afterChange(fx: Cue[], action: GameAction | null) {
     this.lastActivity = gameNow();
     this.scheduleSave();
