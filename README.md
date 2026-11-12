@@ -163,6 +163,7 @@ fresh (this deletes the quick-start data).
 cp .env.example .env             # then set POSTGRES_PASSWORD and the same password in DATABASE_URL
 docker compose up -d db          # or point DATABASE_URL at any Postgres 14+
 npm install
+npx prisma generate              # Prisma 7 no longer does this on install
 npx prisma migrate dev
 npm run db:seed                  # demo@example.com / demo1234
 npm run dev                      # http://localhost:3000 (tsx watch: server + Next dev)

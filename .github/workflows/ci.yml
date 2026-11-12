@@ -55,6 +55,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci --include=dev
+      # Prisma 7 no longer generates the client on install.
+      - run: npx prisma generate
       - run: npx prisma migrate deploy
       - name: Pick a one-off password for the seeded demo account
         run: echo "SEED_PASSWORD=$(openssl rand -hex 16)" >> "$GITHUB_ENV"
