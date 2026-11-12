@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import type { Settings } from "@/engine/types";
 import { SOUNDBOARD, type SoundboardId } from "@/shared/protocol";
 import { Qr, Signature, StatusDot, contestantName, useOrigin } from "@/components/game";
-import { useHost } from "./HostClient";
+import { HOST_SOUND_KEY, hostSoundMode, useHost, type HostSoundMode } from "./HostClient";
+import { sound } from "@/client/sound";
 
 // ----------------------------------------------------------------- players
 
@@ -221,9 +222,34 @@ export function SoundPanel() {
   const set = (patch: Partial<Settings["sound"]>) => act({ type: "settings/update", settings: { sound: patch } });
   const [vol, setVol] = useState(s.master);
   useEffect(() => setVol(s.master), [s.master]);
+  const { presence } = useHost();
+  const [here, setHere] = useState<HostSoundMode>(() => hostSoundMode());
+  const displayOn = presence?.display === "online";
   return (
     <div className="flex flex-col gap-5">
-      <p className="text-sm text-white/60">All game audio plays on the display. These settings are saved with this game.</p>
+      <p className="text-sm text-white/60">
+        Game audio plays on the big screen (click it once to enable sound).{" "}
+        {displayOn ? "A display is connected." : "No display is connected right now, so this device plays the sounds unless you turn that off below."}
+      </p>
+      <label className="flex flex-col gap-1">
+        <span>Sounds on this device</span>
+        <select
+          className="input"
+          value={here}
+          onChange={(e) => {
+            const v = e.target.value as HostSoundMode;
+            setHere(v);
+            try {
+              localStorage.setItem(HOST_SOUND_KEY, v);
+            } catch {}
+            if (v !== "off") void sound().unlock().then(() => sound().play("correct"));
+          }}
+        >
+          <option value="auto">Only when no big screen is connected</option>
+          <option value="on">Always</option>
+          <option value="off">Never</option>
+        </select>
+      </label>
       <label className="flex flex-col gap-1">
         <span>Master volume: {Math.round(vol * 100)}%</span>
         <input type="range" min={0} max={1} step={0.05} value={vol} onChange={(e) => setVol(Number(e.target.value))} onPointerUp={() => set({ master: vol })} onKeyUp={() => set({ master: vol })} />

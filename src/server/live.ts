@@ -413,7 +413,8 @@ export class LiveGame {
   }
 
   emitSound(id: string) {
-    for (const socket of this.sockets.values()) if (socket.data.role === "display") (socket as Socket).emit("fx", { cue: "sfx", id });
+    // Hosts get it too: their device plays it when no big screen is connected (see HostClient).
+    for (const socket of this.sockets.values()) if (socket.data.role === "display" || socket.data.role === "host") (socket as Socket).emit("fx", { cue: "sfx", id });
   }
 
   private kickSockets(playerId: string, reason: string) {

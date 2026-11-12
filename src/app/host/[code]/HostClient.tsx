@@ -1,11 +1,12 @@
 "use client";
 
-import { createContext, useCallback, useContext, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useGame } from "@/client/useGame";
 import { useWakeLock } from "@/client/useWakeLock";
+import { sound } from "@/client/sound";
 import type { GameView } from "@/engine/views";
-import type { HostIntent, PresenceView } from "@/shared/protocol";
+import type { FxEvent, HostIntent, PresenceView } from "@/shared/protocol";
 import { ConnBanner, StatusDot, contestants, formatScore, useBoardTheme } from "@/components/game";
 import { MainPane } from "./main";
 import { DevicesPanel, DisplayPanel, HistoryPanel, PlayersPanel, SettingsPanel, SoundPanel } from "./panels";
@@ -21,6 +22,18 @@ export interface HostCtx {
   toast: (msg: string) => void;
 }
 const Ctx = createContext<HostCtx | null>(null);
+
+/** Where this device's "play game sounds here" choice is kept: "auto" | "on" | "off". */
+export const HOST_SOUND_KEY = "tp:host-sound";
+export type HostSoundMode = "auto" | "on" | "off";
+export function hostSoundMode(): HostSoundMode {
+  try {
+    const v = localStorage.getItem(HOST_SOUND_KEY);
+    return v === "on" || v === "off" ? v : "auto";
+  } catch {
+    return "auto";
+  }
+}
 export function useHost(): HostCtx {
   const c = useContext(Ctx);
   if (!c) throw new Error("useHost outside HostClient");
@@ -30,12 +43,40 @@ export function useHost(): HostCtx {
 type Panel = "players" | "display" | "sound" | "settings" | "history" | "devices" | null;
 
 export default function HostClient({ code, gameId, role }: { code: string; gameId: string; role: string }) {
+  // Game sounds normally come from the big screen. When no display is connected (testing, or
+  // a small game around one laptop) this device plays them instead, unless turned off here.
+  const live = useRef<{ view: GameView | null; presence: PresenceView | null }>({ view: null, presence: null });
+  const onFx = (fx: FxEvent) => {
+    const mode = hostSoundMode();
+    if (mode === "off" || fx.cue === "react") return;
+    if (mode === "auto" && live.current.presence?.display === "online") return;
+    const v = live.current.view;
+    const idx = fx.playerId ? (v?.players.find((p) => p.id === fx.playerId)?.index ?? 0) : undefined;
+    if (fx.cue === "sfx" && fx.id) sound().play(fx.id);
+    else sound().play(fx.cue, idx);
+  };
   const { view, presence, status, error, emit, now } = useGame({
     role: "host",
     code,
+    onFx,
     onRedirect: (next) => window.location.replace(`/host/${next}`),
   });
   useBoardTheme(view?.theme);
+  live.current = { view, presence };
+  // Browsers only allow audio after a tap or key press; the host taps constantly, so the first one unlocks it.
+  useEffect(() => {
+    const unlock = () => void sound().unlock();
+    window.addEventListener("pointerdown", unlock);
+    window.addEventListener("keydown", unlock);
+    return () => {
+      window.removeEventListener("pointerdown", unlock);
+      window.removeEventListener("keydown", unlock);
+    };
+  }, []);
+  const soundSettings = view?.settings.sound;
+  useEffect(() => {
+    if (soundSettings) sound().apply(soundSettings);
+  }, [soundSettings]);
   const [panel, setPanel] = useState<Panel>(null);
   useWakeLock();
   const [mobileTab, setMobileTab] = useState<"game" | "scores">("game");
