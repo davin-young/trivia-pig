@@ -12,6 +12,7 @@ WORKDIR /app
 FROM base AS deps
 COPY package.json package-lock.json ./
 COPY prisma ./prisma
+COPY prisma.config.ts ./
 RUN --mount=type=cache,target=/root/.npm npm ci --include=dev && npx prisma generate
 
 # ---- build ---------------------------------------------------------------
@@ -60,7 +61,7 @@ COPY --from=build --chown=app:app /app/dist ./dist
 COPY --from=build --chown=app:app /app/public ./public
 COPY --from=build --chown=app:app /app/prisma ./prisma
 COPY --from=build --chown=app:app /app/src ./src
-COPY --from=build --chown=app:app /app/next.config.ts /app/tsconfig.json ./
+COPY --from=build --chown=app:app /app/next.config.ts /app/tsconfig.json /app/prisma.config.ts ./
 COPY --chown=app:app scripts/docker-entrypoint.sh ./scripts/docker-entrypoint.sh
 # The container never runs as root. A named volume mounted at /data/uploads inherits this
 # ownership; a bind mount must be owned by uid 10001 on the host (the homelab compose file
