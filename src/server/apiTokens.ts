@@ -4,7 +4,7 @@ import { prisma } from "./db";
 import { randomToken, sha256 } from "./crypto";
 import { apiUser, err } from "./session";
 import { hit } from "./rateLimit";
-import { OAUTH_ACCESS_PREFIX, userForAccessToken, wwwAuthenticate } from "./oauth";
+import { APP_TOKEN_PREFIX, userForAccessToken, wwwAuthenticate } from "./oauth";
 
 /**
  * Personal access tokens for the board API and the MCP server.
@@ -50,7 +50,7 @@ export async function apiAuth(req: Request): Promise<ApiAuth | Response> {
       headers: { "content-type": "application/json", "www-authenticate": wwwAuthenticate("invalid_token") },
     });
   // An app connected by sign-in (OAuth): same reach as a personal token, but it expires and refreshes.
-  if (token.startsWith(OAUTH_ACCESS_PREFIX) && token.length <= 200) {
+  if (token.startsWith(APP_TOKEN_PREFIX) && token.length <= 200) {
     const found = await userForAccessToken(token);
     if (!found) return unauthorized();
     if (!hit(`apitoken:${found.grantId}`, PER_MINUTE, 60_000)) return err("Too many requests. Wait a minute and try again.", 429);

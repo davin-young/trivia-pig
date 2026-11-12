@@ -17,7 +17,11 @@ import { env } from "./env";
  * Only SHA-256 hashes of codes and tokens are stored.
  */
 
-export const OAUTH_ACCESS_PREFIX = "tpo_";
+/**
+ * Prefix of the access tokens handed to connected apps. The tokens are 240 random bits, so a
+ * plain SHA-256 is the right way to store them (slow password hashing is for guessable secrets).
+ */
+export const APP_TOKEN_PREFIX = "tpo_";
 const REFRESH_PREFIX = "tpr_";
 const CODE_TTL_MS = 5 * 60_000;
 const ACCESS_TTL_MS = 60 * 60_000;
@@ -211,7 +215,7 @@ function tokenResponse(access: string, refresh: string) {
 }
 
 function freshPair() {
-  const access = OAUTH_ACCESS_PREFIX + randomToken(30);
+  const access = APP_TOKEN_PREFIX + randomToken(30);
   const refresh = REFRESH_PREFIX + randomToken(36);
   return {
     access,
