@@ -19,6 +19,19 @@ const isAnswer = (e: ScoreEvent) => e.kind !== "adjust";
 const isRight = (e: ScoreEvent) => e.kind === "correct" || e.kind === "dd-correct" || e.kind === "final-correct";
 
 /**
+ * How many answers in a row each contestant has right, as of now (only runs of 2 or more).
+ * Drives the "on fire" badges during the game; a wrong answer puts the run back to zero.
+ */
+export function currentStreaks(s: GameState): Record<string, number> {
+  const run: Record<string, number> = {};
+  for (const e of s.scoreEvents) {
+    if (!isAnswer(e)) continue;
+    run[e.contestantId] = isRight(e) ? (run[e.contestantId] ?? 0) + 1 : 0;
+  }
+  return Object.fromEntries(Object.entries(run).filter(([, n]) => n >= 2));
+}
+
+/**
  * Fun end-of-game superlatives, computed from what the engine already records
  * (score events and buzz reaction times). Pure, so it is the same on every device.
  * Each award goes to at most one winner; ties go to whoever got there first.

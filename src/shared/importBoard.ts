@@ -1,3 +1,4 @@
+import { isSimpleBoard, simpleBoardSchema, simpleToContent } from "./simpleBoard";
 import {
   boardContentSchema,
   emptyClue,
@@ -157,6 +158,11 @@ export function boardFromCsv(text: string): BoardContent {
 
 /** JSON import: our export format `{ format: "jeppidy-board", content }` or bare BoardContent. */
 export function boardFromJson(raw: unknown): { content: BoardContent; title?: string; description?: string; tags?: string[] } {
+  // The published format (what an AI assistant writes): no ids, "question" instead of "text".
+  if (isSimpleBoard(raw)) {
+    const simple = simpleBoardSchema.parse(raw);
+    return { content: simpleToContent(simple), title: simple.title, description: simple.description, tags: simple.tags };
+  }
   const obj = raw as Record<string, unknown> | null;
   const isWrapped = !!obj && typeof obj === "object" && "content" in obj;
   const content = boardContentSchema.parse(isWrapped ? obj!.content : raw);

@@ -106,20 +106,17 @@ sound → Final Jeopardy → builder → media → dashboard/history/post-game �
 
 ## To do
 
-- [ ] **Let people plug their own AI in to make boards.** Easiest path first:
-  1. *Personal API tokens.* A host creates a token on the dashboard (shown once, stored hashed,
-     revocable, scoped to their own boards). `Authorization: Bearer <token>` is accepted on the
-     board routes that already exist: `POST /api/boards` (create from JSON content),
-     `GET /api/boards/:id/export`, and a new `PUT /api/boards/:id/content`. Same validation
-     (`parseContent`) and rate limits as the editor.
-  2. *A published board format.* Serve the JSON schema for a board at `/api/schema/board.json`
-     plus a one-page "make a board with your AI" guide with a copy-paste prompt, so any chat
-     assistant can produce a file that the existing Import button accepts. This needs no token
-     and works today for people who are not technical.
-  3. *An MCP server.* A thin wrapper over the token API (`list_boards`, `get_board`,
-     `create_board`, `update_board`, `check_board`), served at `/mcp` over streamable HTTP so
-     Claude and other MCP clients can connect with just the URL and a token.
-  Never expose live games, answers of a game in progress, or other hosts' boards through any of these.
+- [x] **Let people plug their own AI in to make boards** (done 2026-11-12, see `/ai`):
+  1. *A published board format* (`src/shared/simpleBoard.ts`): text only, no ids. Its JSON Schema
+     is served at `/api/schema/board.json`, the Import button accepts it, and `/ai` has a
+     copy-paste prompt plus a box to paste the assistant's reply into.
+  2. *Personal API tokens* (`ApiToken`, shown once, stored hashed, revocable, 10 per account,
+     120 requests a minute) for `/api/v1/boards` (list, create, read, replace, check).
+  3. *An MCP server* at `/mcp` (stateless streamable HTTP, token in the Authorization header):
+     `get_board_format`, `list_boards`, `get_board`, `check_board`, `create_board`, `update_board`.
+  A token reaches its owner's own boards and nothing else: not games, not team mates' boards,
+  not the account or the token list. `scripts/api-smoke.mjs` checks all of that end to end.
+  Not done: OAuth sign-in for MCP apps that cannot send a token header.
 - [ ] Set `ALERT_URL` on the homelab so the monitor's notifications reach a phone.
 - [ ] Set NTP on the ESXi host (its clock was about 6 minutes fast on 2026-11-12).
 - [ ] Submit `sitemap.xml` in Google Search Console.

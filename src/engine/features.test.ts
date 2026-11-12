@@ -139,6 +139,8 @@ describe("bots and awards", () => {
     play(0, 0, "a", 200, true);
     play(0, 1, "a", 400, true);
     play(0, 2, "a", 300, true);
+    expect(view(g, "display").streaks).toEqual({ a: 3 });
+    expect(view(g, "player", "b").streaks).toEqual({ a: 3 });
     play(1, 0, "b", 900, false);
     play(1, 1, "b", 1100, false);
     play(1, 2, "b", 1000, false);

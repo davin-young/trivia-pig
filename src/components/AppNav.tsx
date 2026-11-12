@@ -2,7 +2,7 @@ import Link from "next/link";
 import { APP_NAME } from "./game";
 
 /** Top navigation for signed-in host pages (dashboard, builder, results, admin). Server component. */
-export function AppNav({ user, active }: { user: { name: string; email: string; isAdmin: boolean }; active?: "boards" | "games" | "leaderboard" | "team" | "admin" }) {
+export function AppNav({ user, active }: { user: { name: string; email: string; isAdmin: boolean }; active?: "boards" | "games" | "leaderboard" | "team" | "admin" | "ai" }) {
   const link = (href: string, label: string, key: typeof active) => (
     <Link href={href} className={`rounded-lg px-3 py-1.5 text-sm ${active === key ? "bg-white/10 text-white" : "text-white/60 hover:text-white"}`}>
       {label}
@@ -20,6 +20,7 @@ export function AppNav({ user, active }: { user: { name: string; email: string; 
           {link("/dashboard/games", "Games", "games")}
           {link("/dashboard/leaderboard", "Leaderboard", "leaderboard")}
           {link("/dashboard/team", "Co-hosts", "team")}
+          {link("/ai", "AI", "ai")}
           <Link href="/gallery" className="rounded-lg px-3 py-1.5 text-sm text-white/60 hover:text-white">
             Gallery
           </Link>

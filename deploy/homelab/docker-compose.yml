@@ -188,6 +188,8 @@ services:
       TRIVIA_CLIENT_SECRET: ${OIDC_CLIENT_SECRET}
     volumes:
       - ./keycloak/trivia-realm.json:/opt/keycloak/data/import/trivia-realm.json:ro
+      # Sign-in pages in the app's colours (the realm's loginTheme is "triviapig").
+      - ./keycloak/themes/triviapig:/opt/keycloak/themes/triviapig:ro
     depends_on:
       keycloak-db:
         condition: service_healthy

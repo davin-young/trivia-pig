@@ -3,7 +3,7 @@ import { findClue, isPlayable, type BoardContent, type Media } from "@/shared/bo
 import type { Drawing } from "@/shared/strokes";
 import type { BoardTheme } from "@/shared/theme";
 import { describeAction } from "./history";
-import { computeAwards, type Award } from "./awards";
+import { computeAwards, currentStreaks, type Award } from "./awards";
 import { audienceMembers, contestantOf, maxDailyDoubleWager, maxFinalWager, roundComplete, vipOf } from "./reducer";
 import { PLAYER_ACTIONS, type FinalStage, type GameState, type LogEntry, type Settings, type Team, type Timer, type Screen, type ClueStage } from "./types";
 
@@ -161,6 +161,8 @@ export interface GameView {
   };
   /** Set once the game is finished. */
   awards: Award[] | null;
+  /** contestant id -> right answers in a row right now (2 or more only). */
+  streaks: Record<string, number>;
   /** host audience only */
   host?: {
     history: HistoryItemView[];
@@ -347,6 +349,7 @@ export function buildView(
     version: s.version,
     serverNow: ctx.now ?? gameNow(),
     awards: s.phase === "finished" ? computeAwards(s) : null,
+    streaks: currentStreaks(s),
   };
 
   if (ctx.audience === "player" && ctx.playerId) {

@@ -18,8 +18,11 @@ import {
   TimerBar,
   contestantName,
   contestants,
+  formatDelta,
   formatScore,
+  useAnimatedNumber,
   useCountdown,
+  useDelta,
   useOrigin,
   type Contestant, useBoardTheme } from "@/components/game";
 
@@ -600,6 +603,27 @@ function WithPodiums({ view, children }: { view: GameView; children: React.React
   );
 }
 
+/** A podium's score: counts to its new value, flashes the points won or lost, and shows a hot streak. */
+function PodiumScore({ score, streak }: { score: number; streak: number }) {
+  const shown = useAnimatedNumber(score);
+  const delta = useDelta(score);
+  return (
+    <div className={`money relative grid h-[36%] place-items-center overflow-hidden bg-[var(--board)] text-[3.6vmin] ${shown < 0 ? "!text-red-400" : ""}`}>
+      {formatScore(shown)}
+      {streak >= 3 && (
+        <span className="absolute right-[0.5vmin] top-[0.2vmin] rounded-full bg-black/45 px-[0.6vmin] font-sans text-[1.7vmin] font-bold text-white" title={`${streak} right in a row`}>
+          🔥{streak}
+        </span>
+      )}
+      {delta && (
+        <span key={delta.key} className={`anim-delta absolute inset-0 grid place-items-center font-sans text-[3.4vmin] font-black text-white ${delta.amount > 0 ? "bg-green-600" : "bg-red-600"}`}>
+          {formatDelta(delta.amount)}
+        </span>
+      )}
+    </div>
+  );
+}
+
 /** More podiums than this do not fit legibly across a TV. */
 const MAX_PODIUMS = 10;
 
@@ -637,7 +661,7 @@ function PodiumRow({ view, list: everyone }: { view: GameView; list: Contestant[
             key={c.id}
             className={`flex min-w-0 max-w-[30vmin] flex-1 flex-col overflow-hidden rounded-[1vmin] border-[0.3vmin] bg-[var(--board-deep)] transition ${buzzed || ddId === c.id ? "podium-buzzed border-gold" : "border-[#6b5a2a]"} ${attempted ? "opacity-50" : ""}`}
           >
-            <div className={`money grid h-[36%] place-items-center bg-[var(--board)] text-[3.6vmin] ${score < 0 ? "!text-red-400" : ""}`}>{formatScore(score)}</div>
+            <PodiumScore score={score} streak={view.streaks[c.id] ?? 0} />
             <div className="relative min-h-0 flex-1 p-[0.5vmin] text-[2.4vmin]">
               {isTeam ? (
                 <div className="flex h-full flex-col items-center justify-center">

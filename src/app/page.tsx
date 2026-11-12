@@ -206,6 +206,7 @@ export default async function Home() {
               <Link href="/display" className="py-1 hover:text-white">Open a display</Link>
               <Link href="/gallery" className="py-1 hover:text-white">Boards</Link>
               <Link href="/try" className="py-1 hover:text-white">Board builder</Link>
+              <Link href="/ai" className="py-1 hover:text-white">Make boards with AI</Link>
               <Link href={hostHref} className="py-1 hover:text-white">{user ? "Dashboard" : "Sign in"}</Link>
               <GitHubLink className="inline-flex items-center gap-1.5 py-1 hover:text-white" />
             </nav>
