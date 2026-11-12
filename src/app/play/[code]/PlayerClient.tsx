@@ -2,12 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import confetti from "canvas-confetti";
 import { getPlayerToken, setPlayerToken, clearPlayerToken, useGame } from "@/client/useGame";
 import { sound } from "@/client/sound";
 import { useWakeLock } from "@/client/useWakeLock";
 import { DrawingPad } from "@/components/DrawingPad";
 import { Ink } from "@/components/Ink";
-import { ConnBanner, MediaView, StatusDot, TimerBar, contestantName, contestants, formatScore, playerName, useCountdown, useBoardTheme } from "@/components/game";
+import { ConnBanner, MediaView, StatusDot, TimerBar, contestantName, contestants, formatDelta, formatScore, ordinal, playerName, useAnimatedNumber, useCountdown, useBoardTheme, useDelta } from "@/components/game";
 import type { GameView } from "@/engine/views";
 import { AVATAR_CANVAS, FINAL_CANVAS, NAME_CANVAS, isEmptyDrawing, type Drawing } from "@/shared/strokes";
 import { REACTIONS } from "@/shared/protocol";
@@ -94,7 +95,7 @@ export default function PlayerClient({ code }: { code: string }) {
   }
 
   return (
-    <main className="flex min-h-dvh flex-col bg-[var(--board-edge)] pb-[env(safe-area-inset-bottom)]">
+    <main className="flex min-h-dvh flex-col overflow-x-clip bg-[var(--board-edge)] pb-[env(safe-area-inset-bottom)]">
       <ConnBanner status={status} error={error} />
       <header className="flex items-center gap-3 border-b border-white/10 bg-[var(--board-deep)] px-4 py-2">
         <div className="h-10 w-24 shrink-0">
@@ -103,9 +104,10 @@ export default function PlayerClient({ code }: { code: string }) {
         <div className="min-w-0 flex-1 truncate text-sm text-white/60">
           {view.settings.mode === "team" && me.contestantId ? contestantName(view, me.contestantId) : view.title}
         </div>
-        <div className={`money text-2xl ${(view.scores[me.contestantId ?? ""] ?? 0) < 0 ? "!text-red-400" : ""}`}>{formatScore(view.scores[me.contestantId ?? ""] ?? 0)}</div>
+        <MyScore score={view.scores[me.contestantId ?? ""] ?? 0} />
         <StatusDot status={status} />
       </header>
+      <ScoreToast score={view.scores[me.contestantId ?? ""] ?? 0} streak={view.streaks[me.contestantId ?? ""] ?? 0} />
       {flash && <div className="bg-red-600 py-2 text-center font-semibold">{flash}</div>}
       <div className="flex flex-1 flex-col p-4">
         <PlayerStage view={view} emit={emit} now={now} onFlash={setFlash} />
@@ -115,6 +117,95 @@ export default function PlayerClient({ code }: { code: string }) {
 }
 
 type Emit = ReturnType<typeof useGame>["emit"];
+
+/** Your score in the header: it counts to the new value instead of jumping. */
+function MyScore({ score }: { score: number }) {
+  const shown = useAnimatedNumber(score);
+  return <div className={`money text-2xl tabular-nums ${shown < 0 ? "!text-red-400" : ""}`}>{formatScore(shown)}</div>;
+}
+
+/** The moment your score changes: a banner with the points, a streak callout, and a buzz in the hand. */
+function ScoreToast({ score, streak }: { score: number; streak: number }) {
+  const delta = useDelta(score, 2600);
+  const key = delta?.key;
+  const up = (delta?.amount ?? 0) > 0;
+  useEffect(() => {
+    if (key === undefined) return;
+    navigator.vibrate?.(up ? [40, 50, 90] : [160]);
+  }, [key, up]);
+  if (!delta) return null;
+  return (
+    <div key={delta.key} role="status" aria-live="polite" className={`anim-pop flex items-center justify-center gap-3 py-2.5 text-center font-bold ${up ? "bg-green-600" : "bg-red-600"}`}>
+      <span className="text-2xl">{up ? "🎉" : "😬"}</span>
+      <span className="text-2xl tabular-nums">{formatDelta(delta.amount)}</span>
+      {up && streak >= 2 && <span className="rounded-full bg-black/25 px-2 py-0.5 text-sm">🔥 {streak} in a row</span>}
+    </div>
+  );
+}
+
+/**
+ * Between clues there is nothing to press, so show the things players ask out loud:
+ * where am I, who is ahead, and whose turn is it to pick.
+ */
+function BetweenClues({ view }: { view: GameView }) {
+  const me = view.me!;
+  const ranked = [...contestants(view)].sort((a, b) => (view.scores[b.id] ?? 0) - (view.scores[a.id] ?? 0));
+  const scoreOf = (id: string) => view.scores[id] ?? 0;
+  const mine = scoreOf(me.contestantId ?? "");
+  const place = 1 + ranked.filter((c) => scoreOf(c.id) > mine).length;
+  const tied = ranked.filter((c) => scoreOf(c.id) === mine).length > 1;
+  const ahead = [...ranked].reverse().find((c) => scoreOf(c.id) > mine);
+  const runnerUp = ranked.find((c) => c.id !== me.contestantId);
+  let standing = "";
+  if (ranked.length > 1 && me.contestantId) {
+    if (place === 1) standing = tied ? "Tied for the lead" : `In the lead by ${formatScore(mine - scoreOf(runnerUp?.id ?? ""))}`;
+    else standing = `${tied ? "Tied for " : ""}${ordinal(place)} · ${formatScore(scoreOf(ahead!.id) - mine)} behind ${ahead!.name}`;
+  }
+  const myPick = !!view.controlId && view.controlId === me.contestantId;
+  const top = ranked.slice(0, 5);
+  const rows = top.some((c) => c.id === me.contestantId) || !me.contestantId ? top : [...top.slice(0, 4), ranked.find((c) => c.id === me.contestantId)!];
+  return (
+    <div className="flex flex-1 flex-col gap-3">
+      {view.paused ? (
+        <div className="card text-center text-lg font-semibold">⏸ Paused</div>
+      ) : view.roundComplete ? (
+        <div className="card text-center text-lg font-semibold">Round complete! The next one is coming up.</div>
+      ) : myPick ? (
+        <div className="anim-pop rounded-2xl bg-gold p-4 text-center text-black">
+          <div className="text-3xl">🎯</div>
+          <div className="text-2xl font-black">Your pick!</div>
+          <div className="text-sm font-medium">Call out a category and an amount.</div>
+        </div>
+      ) : (
+        <div className="card text-center text-white/70">{view.controlId ? `${contestantName(view, view.controlId)} picks the next clue.` : view.clue ? "Next clue coming up…" : "Waiting for the next clue…"}</div>
+      )}
+      {standing && (
+        <div className="text-center">
+          <div className="text-xs uppercase tracking-wide text-white/50">Your standing</div>
+          <div className="text-xl font-bold">{place === 1 ? "🥇 " : ""}{standing}</div>
+        </div>
+      )}
+      <ol className="flex flex-col gap-1.5">
+        {rows.map((c) => {
+          const isMe = c.id === me.contestantId;
+          const streak = view.streaks[c.id] ?? 0;
+          return (
+            <li key={c.id} className={`flex items-center gap-3 rounded-xl px-3 py-2 ${isMe ? "bg-gold/15 ring-1 ring-gold" : "bg-white/5"}`}>
+              <span className="w-6 text-center font-bold text-white/60">{1 + ranked.filter((x) => scoreOf(x.id) > scoreOf(c.id)).length}</span>
+              <span className="min-w-0 flex-1 truncate font-semibold" style={c.color ? { color: c.color } : undefined}>
+                {c.name}
+                {isMe && <span className="ml-1.5 text-xs font-normal text-white/60">you</span>}
+              </span>
+              {streak >= 3 && <span className="text-sm">🔥{streak}</span>}
+              <span className={`money text-lg tabular-nums ${scoreOf(c.id) < 0 ? "!text-red-400" : ""}`}>{formatScore(scoreOf(c.id))}</span>
+            </li>
+          );
+        })}
+      </ol>
+      {ranked.length > rows.length && <div className="text-center text-xs text-white/40">+{ranked.length - rows.length} more playing</div>}
+    </div>
+  );
+}
 
 function Center({ children }: { children: React.ReactNode }) {
   return <main className="flex min-h-dvh flex-col items-center justify-center gap-4 p-6 text-center">{children}</main>;
@@ -375,6 +466,8 @@ function PlayerStage({ view, emit, now, onFlash }: { view: GameView; emit: Emit;
         <Finished view={view} />
       ) : view.clue?.allPlay ? (
         <AllPlayPlayer key={view.clue.id} view={view} emit={emit} now={now} />
+      ) : view.phase === "board" && !view.clue ? (
+        <BetweenClues view={view} />
       ) : (
         <Buzzer view={view} emit={emit} now={now} onFlash={onFlash} />
       )}
@@ -616,6 +709,15 @@ function Buzzer({ view, emit, now, onFlash }: { view: GameView; emit: Emit; now:
   const attempted = !!c && !!me.contestantId && c.attempted.includes(me.contestantId) && !view.settings.allowRebuzz;
   const locked = (lockLeft ?? 0) > 0;
 
+  // A tap in the hand when it is time to act: buzzers just opened, or it is your turn to answer.
+  const canPress = !!c && !c.dailyDouble && c.stage === "open" && !c.answering && !attempted && !view.paused;
+  useEffect(() => {
+    if (canPress) navigator.vibrate?.(25);
+  }, [canPress]);
+  useEffect(() => {
+    if (answeringMe) navigator.vibrate?.([70, 40, 70]);
+  }, [answeringMe]);
+
   let label = "Waiting for a clue…";
   let tone = "bg-neutral-700 text-white/50";
   let enabled = false;
@@ -624,8 +726,8 @@ function Buzzer({ view, emit, now, onFlash }: { view: GameView; emit: Emit; now:
   else if (c) {
     if (c.stage === "revealed") label = "Answer revealed";
     else if (answeringMe) {
-      label = "You buzzed first! Answer now";
-      tone = "bg-gold text-black";
+      label = "You're in! Answer now";
+      tone = "bg-gold text-black podium-buzzed";
     } else if (answeringOther) {
       label = `Locked — ${playerName(view, c.answering)} buzzed in`;
       tone = "bg-neutral-800 text-white/60";
@@ -635,7 +737,7 @@ function Buzzer({ view, emit, now, onFlash }: { view: GameView; emit: Emit; now:
       tone = "bg-red-900 text-white/70";
     } else if (c.stage === "open") {
       label = "BUZZ!";
-      tone = "bg-red-600 text-white shadow-[0_0_60px_rgba(239,68,68,0.6)]";
+      tone = "bg-red-600 text-white anim-buzz-ready";
       enabled = true;
     } else {
       label = "Get ready…";
@@ -653,6 +755,8 @@ function Buzzer({ view, emit, now, onFlash }: { view: GameView; emit: Emit; now:
         </div>
       )}
       {view.timer && c?.answering && <TimerBar startedAt={view.timer.startedAt} endsAt={view.timer.endsAt} now={now} />}
+      {/* Nothing to press once the answer is out: show the standings instead of a dead button. */}
+      {c?.stage === "revealed" && !c.dailyDouble ? <BetweenClues view={view} /> : (
       <button
         type="button"
         disabled={!enabled}
@@ -669,6 +773,7 @@ function Buzzer({ view, emit, now, onFlash }: { view: GameView; emit: Emit; now:
       >
         <span className="px-6">{label}</span>
       </button>
+      )}
     </div>
   );
 }
@@ -819,11 +924,31 @@ function Finished({ view }: { view: GameView }) {
   const ids = view.settings.mode === "team" ? view.teams.map((t) => t.id) : view.players.filter((p) => !p.removed).map((p) => p.id);
   const ranked = [...ids].sort((a, b) => (view.scores[b] ?? 0) - (view.scores[a] ?? 0));
   const place = me.contestantId ? ranked.indexOf(me.contestantId) + 1 : 0;
+  const won = place === 1;
+  useEffect(() => {
+    if (!won || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    navigator.vibrate?.([60, 60, 60, 60, 200]);
+    void confetti({ particleCount: 140, spread: 80, origin: { y: 0.35 } });
+    const t = setTimeout(() => void confetti({ particleCount: 90, spread: 110, origin: { y: 0.5 } }), 700);
+    return () => clearTimeout(t);
+  }, [won]);
+  const medals = ["🥇", "🥈", "🥉"];
   return (
     <Center>
-      <div className="text-6xl">{place === 1 ? "🏆" : "👏"}</div>
-      <h2 className="text-2xl font-bold">{place === 1 ? "You won!" : place ? `You finished #${place}` : "Game over"}</h2>
+      <div className="text-6xl">{won ? "🏆" : place === 2 ? "🥈" : place === 3 ? "🥉" : "👏"}</div>
+      <h2 className="text-2xl font-bold">{won ? "You won!" : place ? `You finished ${ordinal(place)} of ${ranked.length}` : "Game over"}</h2>
       <div className="money text-5xl">{formatScore(view.scores[me.contestantId ?? ""] ?? 0)}</div>
+      {ranked.length > 1 && (
+        <ol className="flex w-full max-w-xs flex-col gap-1.5 text-left">
+          {ranked.slice(0, 3).map((id, i) => (
+            <li key={id} className={`flex items-center gap-3 rounded-xl px-3 py-2 ${id === me.contestantId ? "bg-gold/15 ring-1 ring-gold" : "bg-white/5"}`}>
+              <span className="text-xl">{medals[i]}</span>
+              <span className="min-w-0 flex-1 truncate font-semibold">{contestantName(view, id)}</span>
+              <span className="money text-lg tabular-nums">{formatScore(view.scores[id] ?? 0)}</span>
+            </li>
+          ))}
+        </ol>
+      )}
       {(view.awards ?? [])
         .filter((a) => a.winnerId === me.playerId || a.winnerId === me.contestantId)
         .map((a) => (
@@ -833,6 +958,9 @@ function Finished({ view }: { view: GameView }) {
             <div className="text-sm text-white/70">{a.detail}</div>
           </div>
         ))}
+      {view.gameId && (
+        <a href={`/r/${view.gameId}`} className="btn-ghost w-full max-w-xs">See the full results</a>
+      )}
       <p className="text-white/60">Thanks for playing! Stay here — if the host starts a rematch you&apos;ll be moved automatically.</p>
     </Center>
   );

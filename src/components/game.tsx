@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import QRCode from "qrcode";
 import type { GameView, PlayerView } from "@/engine/views";
 import type { Media } from "@/shared/board";
@@ -93,6 +93,59 @@ export function playerName(view: GameView, id: string | null | undefined): strin
 
 export function formatScore(n: number): string {
   return (n < 0 ? "-$" : "$") + Math.abs(n).toLocaleString();
+}
+
+/** "+$400" / "−$400" for a score change. */
+export function formatDelta(n: number): string {
+  return (n < 0 ? "−" : "+") + formatScore(Math.abs(n));
+}
+
+export function ordinal(n: number): string {
+  const s = ["th", "st", "nd", "rd"];
+  const v = n % 100;
+  return n + (s[(v - 20) % 10] ?? s[v] ?? s[0]);
+}
+
+/** A number that counts up or down to its new value instead of jumping. */
+export function useAnimatedNumber(value: number, ms = 700): number {
+  const [shown, setShown] = useState(value);
+  const at = useRef(value);
+  useEffect(() => {
+    const start = at.current;
+    if (start === value) return;
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+      at.current = value;
+      setShown(value);
+      return;
+    }
+    const t0 = performance.now();
+    let raf = 0;
+    const step = (t: number) => {
+      const k = Math.min(1, (t - t0) / ms);
+      const v = Math.round(start + (value - start) * (1 - Math.pow(1 - k, 3)));
+      at.current = v;
+      setShown(v);
+      if (k < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [value, ms]);
+  return shown;
+}
+
+/** The latest change to a number, held for a moment so it can be shown ("+$400"). */
+export function useDelta(value: number, holdMs = 2000): { amount: number; key: number } | null {
+  const prev = useRef(value);
+  const [delta, setDelta] = useState<{ amount: number; key: number } | null>(null);
+  useEffect(() => {
+    if (value === prev.current) return;
+    const amount = value - prev.current;
+    prev.current = value;
+    setDelta({ amount, key: performance.now() });
+    const t = setTimeout(() => setDelta(null), holdMs);
+    return () => clearTimeout(t);
+  }, [value, holdMs]);
+  return delta;
 }
 
 // ------------------------------------------------------------------ podium
