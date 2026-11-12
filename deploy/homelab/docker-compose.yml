@@ -154,7 +154,7 @@ services:
   #   auth.triviapig.lol   → http://keycloak:8080   (only if you use the keycloak profile)
   cloudflared:
     <<: *defaults
-    image: cloudflare/cloudflared:2025.4.2
+    image: cloudflare/cloudflared:2026.10.7
     command: tunnel --no-autoupdate run
     environment:
       TUNNEL_TOKEN: ${TUNNEL_TOKEN}
