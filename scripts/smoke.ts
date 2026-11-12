@@ -226,6 +226,10 @@ async function main() {
   assert(!(await stolen.emit("player:reclaim", { playerId: bramId })).ok, "a seat that is in use cannot be taken");
   pb.s.close();
   await new Promise((r) => setTimeout(r, 400));
+  // A phone that only just dropped keeps its seat for the reconnect grace (20 s).
+  assert(((await stolen.emit("player:seats", {})).data as { seats: unknown[] }).seats.length === 0, "a seat that just dropped is not offered yet");
+  assert(!(await stolen.emit("player:reclaim", { playerId: bramId })).ok, "a seat that just dropped cannot be taken");
+  await new Promise((r) => setTimeout(r, 20_500));
   const seats = (await stolen.emit("player:seats", {})).data as { seats: { id: string; name: string }[] };
   assert(seats.seats.length === 1 && seats.seats[0].name === "Bram", "the empty seat is offered by name");
   const back = await stolen.emit("player:reclaim", { playerId: bramId });
