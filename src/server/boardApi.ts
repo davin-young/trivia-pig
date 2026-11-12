@@ -4,6 +4,7 @@ import { prisma } from "./db";
 import { env } from "./env";
 import { maybeSnapshot } from "./boards";
 import { hit } from "./rateLimit";
+import { randomToken } from "./crypto";
 import { checkBoard } from "@/shared/boardCheck";
 import type { BoardContent } from "@/shared/board";
 import { contentToSimple, describeBoardError, simpleBoardSchema, simpleToContent, type SimpleBoard } from "@/shared/simpleBoard";
@@ -126,6 +127,30 @@ export async function updateBoard(userId: string, id: string, raw: unknown, base
   });
   if (res.count === 0) throw new BoardApiError("The board changed since you read it. Read it again and retry.", 409);
   return { id: board.id, rev: board.rev + 1, editUrl: editUrl(board.id), review: reviewBoard(simple) };
+}
+
+export type ShareMode = "off" | "view" | "copy";
+
+/**
+ * Turn a board's share link on or off, and list it in the public gallery. The same rules as the
+ * Share dialog in the editor: the gallery only lists boards that people can copy.
+ */
+export async function shareBoard(userId: string, id: string, mode: unknown, listed: unknown) {
+  if (mode !== "off" && mode !== "view" && mode !== "copy") throw new BoardApiError('mode must be "off", "view" or "copy".');
+  if (listed !== undefined && typeof listed !== "boolean") throw new BoardApiError("listed must be true or false.");
+  if (listed && mode !== "copy") throw new BoardApiError('Only a board shared with mode "copy" can be listed in the gallery.');
+  const board = await ownBoard(userId, id);
+  if (mode === "off") {
+    await prisma.board.update({ where: { id: board.id }, data: { shareToken: null, listed: false, listedAt: null } });
+    return { id: board.id, mode, listed: false, shareUrl: null };
+  }
+  const token = board.shareToken ?? randomToken(12);
+  const list = mode === "copy" && (listed ?? board.listed);
+  await prisma.board.update({
+    where: { id: board.id },
+    data: { shareToken: token, shareMode: mode === "copy" ? "COPY" : "VIEW", listed: list, listedAt: list ? (board.listedAt ?? new Date()) : null },
+  });
+  return { id: board.id, mode, listed: list, shareUrl: `${env.appUrl}/share/${token}`, ...(list ? { galleryUrl: `${env.appUrl}/gallery` } : {}) };
 }
 
 /** Read a request body that is either a board, or `{ board, baseRev }`. */

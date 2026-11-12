@@ -94,7 +94,7 @@ try {
   check("mcp initialize echoes a supported version", init.data?.result?.protocolVersion === "2025-03-26" && !!init.data?.result?.capabilities?.tools, JSON.stringify(init.data));
   check("mcp notification: 202", (await rpc(a.token, "notifications/initialized", {}, null)).status === 202);
   const tools = await rpc(a.token, "tools/list", {});
-  check("mcp lists six tools", tools.data?.result?.tools?.length === 6 && tools.data.result.tools.every((t) => t.inputSchema?.type === "object"));
+  check("mcp lists seven tools", tools.data?.result?.tools?.length === 7 && tools.data.result.tools.every((t) => t.inputSchema?.type === "object"));
   check("mcp unknown method: -32601", (await rpc(a.token, "resources/list", {})).data?.error?.code === -32601);
   check("mcp get_board_format has an example", !!(await tool(a.token, "get_board_format")).parsed?.example?.title);
   const created = await tool(a.token, "create_board", { board: { ...board, title: "From MCP" } });
@@ -107,6 +107,21 @@ try {
   const bad = await tool(a.token, "create_board", { board: { title: "x", rounds: [] } });
   check("mcp invalid board is a readable tool error", bad.isError && bad.text.includes("rounds"), bad.text);
   check("mcp other user's board: tool error, not found", (await tool(b.token, "get_board", { id })).text === "Board not found");
+  // ---- sharing
+  const mid = created.parsed?.id;
+  const gallery = async () => (await (await fetch(BASE + "/gallery")).text()).includes("From MCP v2");
+  check("gallery does not show an unshared board", !(await gallery()));
+  check("mcp share_board: view link", (await tool(a.token, "share_board", { id: mid, mode: "view" })).parsed?.shareUrl?.includes("/share/"));
+  check("mcp share_board: a view-only board cannot be listed", (await tool(a.token, "share_board", { id: mid, mode: "view", listed: true })).isError && !(await gallery()));
+  check("mcp share_board: bad mode is refused", (await tool(a.token, "share_board", { id: mid, mode: "public" })).isError);
+  check("mcp share_board: someone else's board is not found", (await tool(b.token, "share_board", { id: mid, mode: "copy", listed: true })).text === "Board not found" && !(await gallery()));
+  const listedNow = await tool(a.token, "share_board", { id: mid, mode: "copy", listed: true });
+  check("mcp share_board: copy + listed appears in the gallery", listedNow.parsed?.listed === true && (await gallery()), listedNow.text);
+  const viaRest = await call(a.token, "POST", `/api/v1/boards/${mid}/share`, { mode: "off" });
+  check("POST share off: link and listing removed", viaRest.status === 200 && viaRest.data?.shareUrl === null && !(await gallery()), JSON.stringify(viaRest.data));
+  check("POST share without a token: 401", (await call(null, "POST", `/api/v1/boards/${mid}/share`, { mode: "copy" })).status === 401);
+  check("POST share on someone else's board: 404", (await call(b.token, "POST", `/api/v1/boards/${mid}/share`, { mode: "copy" })).status === 404);
+
   const batch = await call(a.token, "POST", "/mcp", [{ jsonrpc: "2.0", id: 1, method: "ping" }, { jsonrpc: "2.0", method: "notifications/initialized" }]);
   check("mcp batch answers only the request", Array.isArray(batch.data) && batch.data.length === 1);
 
