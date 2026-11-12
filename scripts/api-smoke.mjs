@@ -6,9 +6,14 @@
  */
 import { createHash, randomBytes } from "node:crypto";
 import { PrismaClient } from "@prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3000";
-const prisma = new PrismaClient();
+if (!process.env.DATABASE_URL) process.loadEnvFile();
+const dbUrl = new URL(process.env.DATABASE_URL);
+dbUrl.searchParams.delete("schema");
+dbUrl.searchParams.delete("connection_limit");
+const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: dbUrl.toString() }) });
 let failed = 0;
 const check = (name, ok, extra = "") => {
   if (!ok) failed++;

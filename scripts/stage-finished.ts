@@ -3,13 +3,14 @@
  * results and recap pages have something to show.
  *   npx tsx scripts/stage-finished.ts   -> prints the recap URL path
  */
+import { dbAdapter } from "../src/server/dbAdapter";
 import { PrismaClient, type Prisma } from "@prisma/client";
 import { makeRound, type BoardContent } from "../src/shared/board";
 import { replay } from "../src/engine/reducer";
 import { DEFAULT_SETTINGS, type GameAction, type LogEntry, type Setup } from "../src/engine/types";
 import { summarize } from "../src/server/live";
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({ adapter: dbAdapter() });
 
 async function main() {
   const owner = await prisma.user.findFirst({ orderBy: { createdAt: "asc" } });

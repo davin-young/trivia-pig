@@ -4,7 +4,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+  // The address is in prisma.config.ts (CLI) and src/server/dbAdapter.ts (the app).
 }
 
 enum BoardStatus {

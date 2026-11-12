@@ -8,8 +8,9 @@ import { randomBytes } from "node:crypto";
 import { PrismaClient, type Prisma } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { demoBoard, DEMO_TITLE } from "../src/shared/demoBoard";
+import { dbAdapter } from "../src/server/dbAdapter";
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({ adapter: dbAdapter() });
 
 async function main() {
   const email = process.env.SEED_EMAIL ?? "demo@example.com";
