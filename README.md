@@ -76,6 +76,16 @@ own copy (see [Quick start](#quick-start-docker)). A public instance runs at <ht
   overlay, announcements, show/hide the join QR, and switch rounds.
 - **All-play clues.** Open any clue as "all-play": everyone types an answer on their phone at once,
   the host judges each one, right answers score and wrong ones cost nothing.
+- **Ways to play.** Starting a game asks how you want to play: individuals or teams, buzz in or
+  "everyone answers" (every clue is all-play, good for big or remote groups), and full board or a
+  quick game (first round, three rows, then the final: about 15 minutes).
+- **Solo practice.** Play any of your boards, or a shared one, alone against a 30 second clock.
+  Typed answers are checked leniently and you can overrule the check. It runs in the browser only:
+  no game is made and nothing is saved on the server.
+- **Game recap.** The public results link shows the final standings, a chart of every score
+  through the game, lead changes, the biggest swing, the toughest category, and a player by
+  player breakdown (right, wrong, points per round, and score without wagers). It never shows clue
+  text or answers.
 - **Auto-open buzzers.** Optionally the buzzers open by themselves after a reading time based on
   the clue's length, with countdown light bars on the display so nobody has to guess.
 - **Reactions, awards and practice bots.** Players can send emoji reactions to the display. The

@@ -5,8 +5,9 @@ import { createGame, userDefaults } from "@/server/games";
 import { boardContentSchema } from "@/shared/board";
 import { settingsSchema } from "@/engine/types";
 import { hostRoleFor } from "@/server/access";
+import { quickBoard } from "@/shared/quickBoard";
 
-const body = z.object({ boardId: z.string().min(1), settings: settingsSchema.partial().optional() });
+const body = z.object({ boardId: z.string().min(1), settings: settingsSchema.partial().optional(), quick: z.boolean().optional() });
 
 /** Start a game from a board: snapshots the board and returns the join code. */
 export async function POST(req: Request) {
@@ -22,6 +23,6 @@ export async function POST(req: Request) {
   if (!content.success) return err("This board has invalid content");
   const owner = board.ownerId === user.id ? user : await prisma.user.findUniqueOrThrow({ where: { id: board.ownerId } });
   const settings = { ...userDefaults(owner), ...(parsed.data.settings ?? {}) };
-  const game = await createGame({ ownerId: board.ownerId, boardId: board.id, title: board.title, content: content.data, settings });
+  const game = await createGame({ ownerId: board.ownerId, boardId: board.id, title: board.title, content: parsed.data.quick ? quickBoard(content.data) : content.data, settings });
   return json({ id: game.id, code: game.code });
 }

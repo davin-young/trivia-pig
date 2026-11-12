@@ -62,20 +62,97 @@ function alertError(e: unknown) {
 export function StartGameButton({ boardId, rematchOf, label = "▶ Start game" }: { boardId: string; rematchOf?: string; label?: string }) {
   const [busy, setBusy] = useState(false);
   const [code, setCode] = useState<string | null>(null);
-  async function start() {
+  const [choosing, setChoosing] = useState(false);
+  async function start(kind?: GameKind) {
     setBusy(true);
-    const r = rematchOf ? await call(`/api/games/${rematchOf}/rematch`, "POST", { boardId }) : await call("/api/games", "POST", { boardId });
+    const r = rematchOf
+      ? await call(`/api/games/${rematchOf}/rematch`, "POST", { boardId })
+      : await call("/api/games", "POST", kind ? { boardId, quick: kind.quick, settings: { mode: kind.teams ? "team" : "solo", everyoneAnswers: kind.everyone } } : { boardId });
     setBusy(false);
     if (!r.ok) return alertError(r.data.error);
+    setChoosing(false);
     setCode(String(r.data.code));
   }
   return (
     <>
-      <button type="button" className="btn-primary !px-3 !py-1.5 text-sm" disabled={busy} onClick={start}>
+      <button type="button" className="btn-primary !px-3 !py-1.5 text-sm" disabled={busy} onClick={() => (rematchOf ? start() : setChoosing(true))}>
         {busy ? "Starting…" : label}
       </button>
+      {choosing && <GameKindModal busy={busy} onStart={start} onClose={() => setChoosing(false)} />}
       {code && <StartedModal code={code} onClose={() => setCode(null)} />}
     </>
+  );
+}
+
+interface GameKind {
+  teams: boolean;
+  everyone: boolean;
+  quick: boolean;
+}
+const KIND_KEY = "tp.gameKind";
+
+function KindChoice({ on, title, hint, onClick }: { on: boolean; title: string; hint: string; onClick: () => void }) {
+  return (
+    <button type="button" aria-pressed={on} onClick={onClick} className={`flex-1 rounded-xl border p-3 text-left ${on ? "border-gold bg-gold/10" : "border-line"}`}>
+      <div className={`font-semibold ${on ? "text-gold" : ""}`}>{title}</div>
+      <div className="text-xs text-white/60">{hint}</div>
+    </button>
+  );
+}
+
+/** Pick how to play before the game is made. Everything here can still be changed in the lobby, except the length. */
+function GameKindModal({ busy, onStart, onClose }: { busy: boolean; onStart: (k: GameKind) => void; onClose: () => void }) {
+  const [kind, setKind] = useState<GameKind>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(KIND_KEY) ?? "null") as Partial<GameKind> | null;
+      if (saved) return { teams: !!saved.teams, everyone: !!saved.everyone, quick: !!saved.quick };
+    } catch {}
+    return { teams: false, everyone: false, quick: false };
+  });
+  const set = (patch: Partial<GameKind>) => setKind((k) => ({ ...k, ...patch }));
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4" onClick={onClose}>
+      <div className="card flex w-full max-w-md flex-col gap-4" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="How do you want to play?">
+        <h2 className="text-xl font-bold">How do you want to play?</h2>
+        <div>
+          <div className="mb-1 text-sm text-white/70">Who scores</div>
+          <div className="flex gap-2">
+            <KindChoice on={!kind.teams} title="Individuals" hint="Everyone for themselves" onClick={() => set({ teams: false })} />
+            <KindChoice on={kind.teams} title="Teams" hint="Phones join a team and share a score" onClick={() => set({ teams: true })} />
+          </div>
+        </div>
+        <div>
+          <div className="mb-1 text-sm text-white/70">Clues</div>
+          <div className="flex gap-2">
+            <KindChoice on={!kind.everyone} title="Buzz in" hint="First to buzz answers out loud" onClick={() => set({ everyone: false })} />
+            <KindChoice on={kind.everyone} title="Everyone answers" hint="All write an answer. Good for big or remote groups" onClick={() => set({ everyone: true })} />
+          </div>
+        </div>
+        <div>
+          <div className="mb-1 text-sm text-white/70">Length</div>
+          <div className="flex gap-2">
+            <KindChoice on={!kind.quick} title="Full board" hint="Every round" onClick={() => set({ quick: false })} />
+            <KindChoice on={kind.quick} title="Quick game" hint="About 15 minutes: first round, three rows, then the final" onClick={() => set({ quick: true })} />
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
+          <button
+            type="button"
+            className="btn-primary flex-1 py-3"
+            disabled={busy}
+            onClick={() => {
+              try {
+                localStorage.setItem(KIND_KEY, JSON.stringify(kind));
+              } catch {}
+              onStart(kind);
+            }}
+          >
+            {busy ? "Starting…" : "▶ Start game"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

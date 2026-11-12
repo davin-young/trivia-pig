@@ -38,6 +38,7 @@ export default async function SharedBoardPage({ params }: { params: Promise<{ to
           </p>
           {board.description && <p className="mt-1 text-sm text-white/70">{board.description}</p>}
         </div>
+        <Link href={`/share/${token}/practice`} className="btn-ghost" title="Play this board alone against the clock">🎯 Practice solo</Link>
         {board.shareMode === "COPY" && <CopyBoardButton token={token} signedIn={!!user} />}
       </div>
       <div className="h-[80dvh] overflow-hidden border-y border-line">

@@ -23,6 +23,8 @@ export const settingsSchema = z.object({
   fairBuzz: z.boolean().default(true),
   /** Open the buzzers automatically once the clue has had time to be read aloud. */
   autoUnlock: z.boolean().default(false),
+  /** Everyone answers: every clue opens for all players to write an answer, with no buzzer race. */
+  everyoneAnswers: z.boolean().default(false),
   /** Seconds everyone gets to write on an all-play clue. */
   allPlayTimerSec: z.number().int().min(5).max(180).default(30),
   /** Let players send emoji reactions to the big screen. */
