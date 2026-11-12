@@ -31,8 +31,13 @@ RUN npm run build && npm prune --omit=dev --ignore-scripts && npx prisma generat
 # Starts from the pinned image itself (not the "base" stage) so the runtime contains only
 # what it needs and scanners can see exactly which image ships.
 FROM node:22-bookworm-slim@sha256:18052396bf1d0c6e0a8c58181b5c1457da19409efbd5032a3f4d86974e74d13c AS runner
+# npm, npx, corepack and yarn ship with the Node image but nothing runs them at runtime (the
+# entrypoint calls node directly), so they are removed: less to patch, less for an attacker to use.
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates tini \
-  && rm -rf /var/lib/apt/lists/*
+  && rm -rf /var/lib/apt/lists/* \
+  && rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
+       /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
+       /opt/yarn-* /usr/local/bin/yarn /usr/local/bin/yarnpkg
 WORKDIR /app
 ARG APP_VERSION=dev
 LABEL org.opencontainers.image.title="Trivia Pig (jeppidy)" \
