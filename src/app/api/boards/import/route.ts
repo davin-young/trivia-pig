@@ -3,6 +3,7 @@ import { prisma } from "@/server/db";
 import { apiUser, err, json } from "@/server/session";
 import { reId } from "@/server/boards";
 import { boardFromCsv, boardFromJson } from "@/shared/importBoard";
+import { describeBoardError } from "@/shared/simpleBoard";
 
 /**
  * Import a board as a NEW board. Accepts either a multipart upload (`file`)
@@ -34,6 +35,9 @@ export async function POST(req: Request) {
   } catch {
     return err("Couldn't read the upload");
   }
+  // A board written by an AI assistant often arrives inside a ```json fence.
+  const fenced = /^\s*```(?:json)?\s*([\s\S]*?)```\s*$/i.exec(text);
+  if (fenced) text = fenced[1];
   if (!text.trim()) return err("The file is empty");
   if (text.length > 2_000_000) return err("File too large", 413);
 
@@ -49,7 +53,7 @@ export async function POST(req: Request) {
       content = boardFromCsv(text);
     }
   } catch (e) {
-    return err(`Couldn't import: ${(e as Error).message.slice(0, 300)}`);
+    return err(`Couldn't import: ${describeBoardError(e)}`);
   }
 
   const board = await prisma.board.create({
