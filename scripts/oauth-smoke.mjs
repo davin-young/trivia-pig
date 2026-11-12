@@ -47,7 +47,9 @@ const consent = (fields, { origin = BASE, withCookie = true, decision = "allow" 
 const token = (fields) => fetch(`${BASE}/api/oauth/token`, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: form(fields) });
 const mcp = (access) =>
   fetch(`${BASE}/mcp`, { method: "POST", headers: { "content-type": "application/json", ...(access ? { authorization: `Bearer ${access}` } : {}) }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }) });
-const codeFrom = (res) => new URL(res.headers.get("location") ?? "http://x/").searchParams;
+/** The consent answer is JSON: { to: "<where the browser goes next>" }. */
+const toOf = async (res) => (await json(res))?.to ?? "";
+const codeFrom = async (res) => new URL((await toOf(res)) || "http://x/").searchParams;
 
 try {
   // ---- discovery
@@ -88,10 +90,13 @@ try {
   check("consent post: another site's Origin refused", (await consent(authQuery(p1.challenge), { origin: "https://evil.example" })).status === 403);
   check("consent post: signed out refused", (await consent(authQuery(p1.challenge), { withCookie: false })).status === 401);
   const denied = await consent(authQuery(p1.challenge), { decision: "deny" });
-  check("consent post: Cancel returns access_denied", denied.status === 303 && codeFrom(denied).get("error") === "access_denied");
+  check("consent post: Cancel returns access_denied", denied.status === 200 && (await codeFrom(denied)).get("error") === "access_denied");
   const allowed = await consent(authQuery(p1.challenge));
-  const q1 = codeFrom(allowed);
-  check("consent post: Allow returns a code and the state", allowed.status === 303 && !!q1.get("code") && q1.get("state") === "st-1" && (allowed.headers.get("location") ?? "").startsWith(REDIRECT));
+  const to1 = await toOf(allowed);
+  const q1 = new URL(to1 || "http://x/").searchParams;
+  check("consent post: Allow returns a code and the state", allowed.status === 200 && !!q1.get("code") && q1.get("state") === "st-1" && to1.startsWith(REDIRECT));
+  const swapped = await consent(authQuery(p1.challenge, { redirect_uri: "https://evil.example/cb" }));
+  check("consent post: unregistered return address gets no code", swapped.status === 400 && !(await toOf(swapped)));
 
   // ---- token
   const badVerifier = await token({ grant_type: "authorization_code", code: q1.get("code"), redirect_uri: REDIRECT, client_id: clientId, code_verifier: pkce().verifier });
@@ -100,12 +105,12 @@ try {
   check("token: a code that was tried once is gone", burned.status === 400);
 
   const p2 = pkce();
-  const code2 = codeFrom(await consent(authQuery(p2.challenge))).get("code");
+  const code2 = (await codeFrom(await consent(authQuery(p2.challenge)))).get("code");
   const otherClient = await token({ grant_type: "authorization_code", code: code2, redirect_uri: REDIRECT, client_id: "tpc_someone_else", code_verifier: p2.verifier });
   check("token: another app cannot redeem the code", otherClient.status === 400);
 
   const p3 = pkce();
-  const code3 = codeFrom(await consent(authQuery(p3.challenge))).get("code");
+  const code3 = (await codeFrom(await consent(authQuery(p3.challenge)))).get("code");
   const good = await token({ grant_type: "authorization_code", code: code3, redirect_uri: REDIRECT, client_id: clientId, code_verifier: p3.verifier });
   const t1 = await json(good);
   check("token: ok", good.status === 200 && t1?.token_type === "Bearer" && t1?.access_token?.startsWith("tpo_") && !!t1?.refresh_token && t1?.expires_in > 0);
@@ -143,7 +148,7 @@ try {
 
   // ---- an app revoking itself
   const p4 = pkce();
-  const code4 = codeFrom(await consent(authQuery(p4.challenge))).get("code");
+  const code4 = (await codeFrom(await consent(authQuery(p4.challenge)))).get("code");
   const t4 = await json(await token({ grant_type: "authorization_code", code: code4, redirect_uri: REDIRECT, client_id: clientId, code_verifier: p4.verifier }));
   await fetch(`${BASE}/api/oauth/revoke`, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: form({ token: t4.refresh_token }) });
   check("revoke endpoint ends the connection", (await mcp(t4.access_token)).status === 401);

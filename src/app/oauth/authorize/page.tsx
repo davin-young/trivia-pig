@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { checkAuthorize, redirectLabel } from "@/server/oauth";
 import { currentUser } from "@/server/session";
 import { APP_NAME } from "@/shared/app";
+import { ConsentButtons } from "./ConsentButtons";
 
 export const metadata: Metadata = { title: "Connect an app", robots: { index: false } };
 export const dynamic = "force-dynamic";
@@ -60,11 +61,7 @@ export default async function AuthorizePage({ searchParams }: { searchParams: Pr
             </ul>
           </div>
           <p className="text-xs text-white/50">Only allow this if you started connecting an app just now. You can disconnect it any time under AI, Connected apps.</p>
-          <form method="post" action="/api/oauth/authorize" className="flex gap-2">
-            {FIELDS.map((k) => (q[k] !== undefined ? <input key={k} type="hidden" name={k} value={q[k]} /> : null))}
-            <button name="decision" value="deny" className="btn-ghost flex-1 py-3">Cancel</button>
-            <button name="decision" value="allow" className="btn-primary flex-1 py-3">Allow</button>
-          </form>
+          <ConsentButtons fields={Object.fromEntries(Object.entries(q).filter((e): e is [string, string] => typeof e[1] === "string"))} />
         </section>
       )}
     </main>
