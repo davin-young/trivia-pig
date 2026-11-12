@@ -14,6 +14,7 @@ import { DevicesPanel, DisplayPanel, HistoryPanel, PlayersPanel, SettingsPanel, 
 export interface HostCtx {
   view: GameView;
   presence: PresenceView | null;
+  mini: import("@/shared/minigames").MiniView | null;
   act: (intent: HostIntent) => Promise<boolean>;
   emit: ReturnType<typeof useGame>["emit"];
   now: () => number;
@@ -55,7 +56,7 @@ export default function HostClient({ code, gameId, role }: { code: string; gameI
     if (fx.cue === "sfx" && fx.id) sound().play(fx.id);
     else sound().play(fx.cue, idx);
   };
-  const { view, presence, status, error, emit, now } = useGame({
+  const { view, presence, mini, status, error, emit, now } = useGame({
     role: "host",
     code,
     onFx,
@@ -116,7 +117,7 @@ export default function HostClient({ code, gameId, role }: { code: string; gameI
     );
   }
 
-  const ctx: HostCtx = { view, presence, act, emit, now, gameId, role, toast };
+  const ctx: HostCtx = { view, presence, mini, act, emit, now, gameId, role, toast };
   const scorekeeper = role === "SCOREKEEPER";
 
   return (
