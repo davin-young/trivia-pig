@@ -18,13 +18,16 @@ concurrency:
   group: release-image
   cancel-in-progress: false
 
+# Read-only by default; the one job that publishes asks for more.
 permissions:
   contents: read
-  packages: write
 
 jobs:
   image:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write # push the image to ghcr.io
     # After CI: only when it passed, and only for a push (never a pull request from a fork).
     if: >-
       github.event_name != 'workflow_run' ||

@@ -53,7 +53,9 @@ async function main() {
       return;
     }
     handle(req, res).catch((err) => {
-      console.error("[http]", req.method, req.url, err);
+      // The method and URL come from the client: strip line breaks so a request cannot forge log lines.
+      const clean = (v: string | undefined) => String(v).replace(/[\r\n]/g, "");
+      console.error("[http] %s %s", clean(req.method), clean(req.url), err);
       if (!res.headersSent) res.writeHead(500);
       res.end();
     });
