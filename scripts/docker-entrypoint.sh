@@ -22,6 +22,20 @@ if [ ! -w "$UPLOAD_DIR" ] && [ "${STORAGE_DRIVER:-local}" = "local" ]; then
   echo "WARNING: $UPLOAD_DIR is not writable by $(id -un); image uploads will fail"
 fi
 
+# Secrets can be handed over as files (Docker secrets, or the quick-start compose file's
+# generated ones): AUTH_SECRET_FILE and DATABASE_URL_FILE. A value set directly wins.
+for var in AUTH_SECRET DATABASE_URL; do
+  eval "current=\${$var:-}"
+  eval "file=\${${var}_FILE:-}"
+  if [ -z "$current" ] && [ -n "$file" ]; then
+    if [ ! -r "$file" ]; then
+      echo "ERROR: ${var}_FILE points at $file, which is missing or unreadable"
+      exit 1
+    fi
+    export "$var=$(cat "$file")"
+  fi
+done
+
 PRISMA="node node_modules/prisma/build/index.js"
 TRIES="${DB_WAIT_ATTEMPTS:-40}"
 i=1

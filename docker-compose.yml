@@ -1,5 +1,9 @@
 # One-command local run:  docker compose up --build
-# Dev with hot reload:    docker compose up -d db && npm run dev
+# Dev with hot reload:    docker compose up -d db && npm run dev   (set POSTGRES_PASSWORD in .env first)
+#
+# No passwords live in this file. On first start the "secrets-init" job writes a random database
+# password and a random AUTH_SECRET into the "secrets" volume, and the app and Postgres read
+# them from there. Set POSTGRES_PASSWORD or AUTH_SECRET in .env to choose your own instead.
 # Images are stored in a Docker volume. For S3-style storage instead, start MinIO with
 # `docker compose --profile minio up -d` and set STORAGE_DRIVER=s3 plus the S3_* values on the app.
 services:
@@ -10,8 +14,8 @@ services:
       - "3000:3000"
     environment:
       APP_URL: ${APP_URL:-http://localhost:3000}
-      AUTH_SECRET: ${AUTH_SECRET:-dev-insecure-secret-change-me}
-      DATABASE_URL: postgresql://jeppidy:jeppidy@db:5432/jeppidy?schema=public
+      AUTH_SECRET_FILE: /run/quickstart/auth_secret
+      DATABASE_URL_FILE: /run/quickstart/database_url
       STORAGE_DRIVER: ${STORAGE_DRIVER:-local}
       UPLOAD_DIR: /data/uploads
       S3_ENDPOINT: http://minio:9000
@@ -24,21 +28,53 @@ services:
       SEED_DEMO: "true"
     volumes:
       - uploads:/data/uploads
+      - secrets:/run/quickstart:ro
     depends_on:
       db:
         condition: service_healthy
+      secrets-init:
+        condition: service_completed_successfully
+
+  # One-shot job: creates the stack's secrets on first start and then exits. Values set in .env
+  # win; otherwise each one is generated once and kept in the "secrets" volume.
+  secrets-init:
+    image: postgres:17-alpine
+    restart: "no"
+    network_mode: none
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
+      AUTH_SECRET: ${AUTH_SECRET:-}
+    volumes:
+      - secrets:/run/quickstart
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - |
+        cd /run/quickstart
+        gen() { head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n'; }
+        put() { # put FILE VALUE: use VALUE if given, else keep the file, else generate
+          if [ -n "$$2" ]; then printf %s "$$2" > "$$1"; elif [ ! -s "$$1" ]; then gen > "$$1"; fi
+        }
+        put db_password "$$POSTGRES_PASSWORD"
+        put auth_secret "$$AUTH_SECRET"
+        printf 'postgresql://jeppidy:%s@db:5432/jeppidy?schema=public' "$$(cat db_password)" > database_url
+        chmod 444 db_password auth_secret database_url
 
   db:
     image: postgres:17-alpine
     restart: unless-stopped
     environment:
       POSTGRES_USER: jeppidy
-      POSTGRES_PASSWORD: jeppidy
+      POSTGRES_PASSWORD_FILE: /run/quickstart/db_password
       POSTGRES_DB: jeppidy
     ports:
       - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - secrets:/run/quickstart:ro
+    depends_on:
+      secrets-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U jeppidy"]
       interval: 3s
@@ -76,5 +112,6 @@ services:
 
 volumes:
   pgdata:
+  secrets:
   uploads:
   miniodata:

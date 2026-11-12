@@ -130,9 +130,14 @@ docker compose up --build        # app + Postgres at http://localhost:3000
 ```
 `SEED_DEMO=true` creates **demo@example.com / demo1234** with the "Kava & Kratom" board.
 
+The compose file holds no passwords: the first start generates a random database password and
+`AUTH_SECRET` and keeps them in the `secrets` volume. If you used the quick start before this
+change, your database volume still has the old password: run `docker compose down -v` to start
+fresh (this deletes the quick-start data).
+
 ## Local development
 ```bash
-cp .env.example .env
+cp .env.example .env             # then set POSTGRES_PASSWORD and the same password in DATABASE_URL
 docker compose up -d db          # or point DATABASE_URL at any Postgres 14+
 npm install
 npx prisma migrate dev
