@@ -96,7 +96,8 @@ export const SCOREKEEPER_INTENTS: ReadonlySet<HostIntent["type"]> = new Set([
 
 export const handshakeSchema = z.object({
   role: z.enum(["display", "host", "player"]),
-  code: z.string().min(4).max(6).regex(/^[A-Za-z0-9]+$/),
+  /** The room code, or a watch token (longer) from a watch, overlay or audience link. */
+  code: z.string().min(4).max(80).regex(/^[A-Za-z0-9]+$/),
   playerToken: z.string().min(10).max(100).optional(),
   /** A display that is only watching (the /watch link or a stream overlay), not the room's big screen. */
   watch: z.boolean().optional(),

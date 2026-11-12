@@ -11,6 +11,7 @@ import { BOT_NAMES, TEAM_COLORS, type HostIntent, type PresenceStatus, type Pres
 import { computeAwards } from "@/engine/awards";
 import { prisma } from "./db";
 import { BUZZ_WINDOW_MS, orderBuzzes, type PendingBuzz } from "./buzzQueue";
+import { watchTokenFor } from "./watchToken";
 
 export interface SocketData {
   role: "display" | "host" | "player";
@@ -21,6 +22,13 @@ export interface SocketData {
   playerId?: string | null;
   /** A display socket that is only watching: it is not the room's big screen. */
   spectator?: boolean;
+  /** Connected with a watch token instead of the room code: never sent the room code. */
+  viaWatch?: boolean;
+}
+
+/** The view for someone who came in through a watch link: the same game, without the way in to play. */
+export function withoutRoomCode(view: GameView): GameView {
+  return { ...view, code: "", showJoinQr: false, settings: { ...view.settings, hideCode: true } };
 }
 export type GameSocket = Socket<Record<string, never>, Record<string, never>, Record<string, never>, SocketData>;
 
@@ -403,6 +411,7 @@ export class LiveGame {
       title: this.title,
       playerId,
       log: audience === "host" ? this.history.log : undefined,
+      watchToken: audience === "host" ? watchTokenFor(this.id) : undefined,
     });
   }
 
@@ -410,10 +419,11 @@ export class LiveGame {
     const cache = new Map<string, GameView>();
     for (const socket of this.sockets.values()) {
       const d = socket.data;
-      const key = d.role === "player" ? `p:${d.playerId ?? ""}` : d.role;
+      const key = `${d.role === "player" ? `p:${d.playerId ?? ""}` : d.role}${d.viaWatch ? ":w" : ""}`;
       let view = cache.get(key);
       if (!view) {
         view = this.viewFor(d.role, d.playerId ?? undefined);
+        if (d.viaWatch) view = withoutRoomCode(view);
         cache.set(key, view);
       }
       (socket as Socket).emit("state", view);
@@ -421,7 +431,8 @@ export class LiveGame {
   }
 
   sendState(socket: GameSocket) {
-    (socket as Socket).emit("state", this.viewFor(socket.data.role, socket.data.playerId ?? undefined));
+    const view = this.viewFor(socket.data.role, socket.data.playerId ?? undefined);
+    (socket as Socket).emit("state", socket.data.viaWatch ? withoutRoomCode(view) : view);
   }
 
   emitFx(cue: Cue) {
@@ -465,8 +476,10 @@ export class LiveGame {
     for (const socket of this.sockets.values()) if (socket.data.role === "display" && socket.data.spectator) socket.disconnect(true);
   }
 
-  redirectAll(newCode: string) {
-    for (const socket of this.sockets.values()) (socket as Socket).emit("redirect", { code: newCode });
+  /** Send everyone to the next game. Watch-link viewers get its watch token, never its room code. */
+  redirectAll(newCode: string, newGameId: string) {
+    const token = watchTokenFor(newGameId);
+    for (const socket of this.sockets.values()) (socket as Socket).emit("redirect", { code: socket.data.viaWatch ? token : newCode });
   }
 
   // ---------------------------------------------------------------- presence

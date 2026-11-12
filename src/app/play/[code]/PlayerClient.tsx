@@ -63,7 +63,7 @@ export default function PlayerClient({ code }: { code: string }) {
         {status === "error" ? (
           <>
             <div className="text-5xl">🤔</div>
-            <h1 className="text-xl font-bold">{error === "Game not found" ? `No game with code ${code}` : error}</h1>
+            <h1 className="text-xl font-bold">{error !== "Game not found" ? error : code.length > 6 ? "This link no longer works" : `No game with code ${code}`}</h1>
             <Link href="/join" className="btn-primary">Try another code</Link>
           </>
         ) : (
@@ -227,7 +227,9 @@ function JoinForm({ view, emit, code, rejoinName }: { view: GameView; emit: Emit
   // An audience link (?audience=1) opens straight on "join the audience".
   const [watchOnly, setWatchOnly] = useState(false);
   useEffect(() => setWatchOnly(new URLSearchParams(window.location.search).get("audience") === "1"), []);
-  const asWatcher = watchOnly && canWatch && !closed;
+  // A watch token in place of the room code (an audience link): this page can only join the audience.
+  const viaWatch = code.length > 6;
+  const asWatcher = viaWatch ? canWatch : watchOnly && canWatch && !closed;
 
   // Seats whose phone dropped off: let the person take theirs back by name.
   const playerCount = view.players.length;
@@ -291,15 +293,17 @@ function JoinForm({ view, emit, code, rejoinName }: { view: GameView; emit: Emit
       <div className="text-center">
         <div className="text-sm text-white/50">Joining</div>
         <h1 className="cat-text text-3xl">{view.title}</h1>
-        <div className="money text-xl tracking-widest">{code}</div>
+        {!viaWatch && <div className="money text-xl tracking-widest">{code}</div>}
       </div>
-      {(closed || asWatcher) && !rejoinName ? (
+      {(closed || asWatcher || viaWatch) && !rejoinName ? (
         <>
           {asWatcher ? (
             <div className="card text-center">
               You&apos;re joining the audience.
-              <button type="button" className="mt-1 block w-full text-sm text-white/60 underline" onClick={() => setWatchOnly(false)}>I want to play instead</button>
+              {!viaWatch && <button type="button" className="mt-1 block w-full text-sm text-white/60 underline" onClick={() => setWatchOnly(false)}>I want to play instead</button>}
             </div>
+          ) : viaWatch ? (
+            <div className="card text-center">This game isn&apos;t taking an audience right now.</div>
           ) : (
             <>
               <div className="card text-center">{view.lobbyLocked ? "The host has locked the room." : "This game has already started and isn't accepting new players."}</div>

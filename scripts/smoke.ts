@@ -220,6 +220,25 @@ async function main() {
   assert(((await pw.emit("player:buzz", {})).data as { accepted: boolean }).accepted === false, "audience cannot buzz");
   assert(!(await pa.emit("player:cheer", { contestantId: bramId })).ok, "players cannot cast audience cheers");
 
+  // Links for viewers carry a watch token, not the room code: watch and join the audience, nothing else.
+  const token = (await h3.until((v) => !!v.watchToken, "host is given the watch token")).watchToken!;
+  assert(!token.toUpperCase().includes(game3.code), "the watch token does not contain the room code");
+  const viewer = connect({ role: "display", code: token.toUpperCase() });
+  const seen = await viewer.until((v) => v.phase === "lobby", "watch-link viewer connected");
+  assert(seen.code === "" && seen.watchToken === null && !JSON.stringify(seen).includes(game3.code), "a watch-link viewer is never sent the room code");
+  const sneak = connect({ role: "player", code: token });
+  const js = await sneak.emit("player:join", { name: "Sly", signature: null });
+  assert(js.ok && (js.data as { playerId: string }).playerId.startsWith("a_"), "a watch token only gets into the audience");
+  v3 = await d3.until((v) => v.crowd.count === 2, "display counts the second audience member");
+  assert(v3.players.length === 2, "a watch token cannot add a contestant");
+  assert((await sneak.until((v) => !!v.me, "audience member bound")).code === "", "an audience member from a watch link is not sent the room code either");
+  const fakeHost = connect({ role: "host", code: token }, cookie);
+  assert((await new Promise<string>((r) => fakeHost.s.on("connect_error", (e) => r(e.message)))).includes("Not authorized"), "a watch token cannot host, even signed in");
+  const forged = connect({ role: "display", code: `${token.slice(0, -1)}${token.endsWith("0") ? "1" : "0"}` });
+  assert((await new Promise<string>((r) => forged.s.on("connect_error", (e) => r(e.message)))) === "Game not found", "a changed watch token is refused");
+  viewer.s.close();
+  sneak.s.close();
+
   // Bram's phone dies; he takes his seat back from another device by name.
   const stolen = connect({ role: "player", code: game3.code });
   await stolen.until((v) => v.phase === "lobby", "new device connected");
