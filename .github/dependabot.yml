@@ -14,22 +14,34 @@ updates:
     groups:
       minor-and-patch:
         update-types: [minor, patch]
+    ignore:
+      # The types must match the Node major the image runs (22), not the newest Node.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
 
-  # Keeps the commit SHAs that pin each GitHub Action current.
+  # Keeps the commit SHAs that pin each GitHub Action current. One pull request for all of
+  # them, so actions that must move together (codeql-action init and analyze) do.
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
     cooldown:
       default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]
 
-  # Keeps the digest-pinned Node base image in the Dockerfile current.
+  # Keeps the digest-pinned Node base image in the Dockerfile current. Moving to a new Node
+  # major is a deliberate choice (only even-numbered releases are long-term support).
   - package-ecosystem: docker
     directory: /
     schedule:
       interval: weekly
     cooldown:
       default-days: 7
+    ignore:
+      - dependency-name: node
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: docker-compose
     directories:
