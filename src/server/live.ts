@@ -14,7 +14,7 @@ import { BUZZ_WINDOW_MS, orderBuzzes, type PendingBuzz } from "./buzzQueue";
 import { watchTokenFor } from "./watchToken";
 import { recordResults } from "./playerResults";
 import { LobbyGames } from "./lobbyGames";
-import type { LobbyGameKind, TapResult } from "@/shared/minigames";
+import type { LobbyGameKind, TapInput, TapResult } from "@/shared/minigames";
 
 export interface SocketData {
   role: "display" | "host" | "player";
@@ -452,7 +452,7 @@ export class LiveGame {
   sendState(socket: GameSocket) {
     const view = this.viewFor(socket.data.role, socket.data.playerId ?? undefined);
     (socket as Socket).emit("state", socket.data.viaWatch ? withoutRoomCode(view) : view);
-    if (this.miniOn) (socket as Socket).emit("mini", this.mini.view(gameNow(), socket.data.role !== "player"));
+    if (this.miniOn) (socket as Socket).emit("mini", this.mini.view(gameNow(), socket.data.role !== "player", socket.data.playerId ?? null));
   }
 
   // ------------------------------------------------------------ lobby games
@@ -464,8 +464,9 @@ export class LiveGame {
   }
 
   /** A player tapped in a lobby game. It never touches the game log. */
-  miniTap(playerId: string, input: { n?: number; pick?: number }): TapResult | null {
+  miniTap(playerId: string, input: TapInput): TapResult | null {
     if (!this.miniOn) return null;
+    this.mini.headcount = Object.values(this.state.players).filter((p) => !p.removed && !p.audience).length;
     const before = this.mini.view(gameNow()).round?.phase;
     const { changed, data } = this.mini.tap(playerId, input, gameNow());
     if (!changed) return data;
@@ -478,9 +479,10 @@ export class LiveGame {
   }
 
   /** The host picks a game, switches shuffling, restarts the round or stops it. */
-  miniControl(opts: { kind?: LobbyGameKind; mix?: boolean; restart?: boolean; stop?: boolean }): boolean {
+  miniControl(opts: { kind?: LobbyGameKind; mix?: boolean; restart?: boolean; stop?: boolean; hide?: string }): boolean {
     if (!this.miniOn) return false;
     this.mini.configure(opts);
+    if (opts.hide) this.mini.hide(opts.hide, gameNow());
     if (opts.stop) this.mini.stop();
     if (opts.restart) this.mini.restart(gameNow());
     this.broadcastMini();
@@ -492,9 +494,12 @@ export class LiveGame {
     const now = gameNow();
     this.miniSentAt = now;
     const on = this.miniOn;
-    const forPlayers = on ? this.mini.view(now, false) : null;
     const forScreens = on ? this.mini.view(now, true) : null;
-    for (const socket of this.sockets.values()) (socket as Socket).emit("mini", socket.data.role === "player" ? forPlayers : forScreens);
+    // Each phone gets its own picture: some games tell a player things nobody else may see.
+    for (const socket of this.sockets.values()) {
+      const mine = socket.data.role === "player";
+      (socket as Socket).emit("mini", !on ? null : mine ? this.mini.view(now, false, socket.data.playerId ?? null) : forScreens);
+    }
     // Come back at the next step: the countdown ending, GO, time running out, the result clearing.
     const next = on ? this.mini.tick(now) : null;
     if (next !== null) this.later("miniStep", Math.max(50, next - now + 20), () => this.broadcastMini());

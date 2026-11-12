@@ -220,6 +220,31 @@ async function main() {
   const stopped = miniIs((m) => !!m && m.round === null);
   await h3.emit("host:minigame", { stop: true });
   assert(!!(await stopped), "the host can stop a lobby game");
+
+  // A bigger lobby game, start to finish: Closest guess keeps the answer back until the round is over.
+  type GuessMini = { kind: string; round: { phase: string; x?: { answer?: number; voted?: number; mine?: { value?: number }; values?: { id: string; value: number }[] } } | null } | null;
+  const miniSeen = (sock: typeof d3.s, ok: (m: GuessMini) => boolean) =>
+    new Promise<GuessMini>((resolve) => {
+      const on = (m: GuessMini) => ok(m) && (sock.off("mini", on), resolve(m));
+      sock.on("mini", on);
+    });
+  const guessing = miniSeen(d3.s, (m) => m?.kind === "guess" && m.round?.phase === "running");
+  await h3.emit("host:minigame", { kind: "guess", restart: true });
+  await pa.emit("player:tap", { n: 1 });
+  await pb.emit("player:tap", { n: 1 });
+  assert((await guessing)?.round?.x?.answer === undefined, "the big screen is not told the answer while people are guessing");
+  const mine = miniSeen(pa.s, (m) => m?.round?.x?.mine?.value === 123);
+  const notMine = miniSeen(pb.s, (m) => m?.round?.x?.voted === 1);
+  assert((await pa.emit("player:tap", { pick: 123 })).ok, "a player sends a guess");
+  assert(!!(await mine), "the player's own phone shows their guess");
+  assert((await notMine)?.round?.x?.mine?.value === undefined, "another player's phone is not sent that guess");
+  const over = miniSeen(d3.s, (m) => m?.round?.phase === "done");
+  await pb.emit("player:tap", { pick: 7 });
+  const result = await over;
+  assert(typeof result?.round?.x?.answer === "number" && result.round.x.values?.length === 2, "the answer and everyone's guesses are shown when the round ends");
+  const cleared = miniSeen(d3.s, (m) => !!m && m.round === null);
+  await h3.emit("host:minigame", { stop: true });
+  await cleared;
   assert(v3.players[0].signature === null && v3.players[0].avatar === null, "family mode keeps unapproved drawings off the display");
   const hv3 = await h3.until((v) => v.players.length === 2, "host sees both players");
   assert(!!hv3.players[0].signature && !!hv3.players[0].avatar && hv3.players[0].signatureHidden, "host can see the drawing and avatar awaiting approval");

@@ -111,7 +111,7 @@ export const clientEvents = {
   "host:undoLast": z.object({}),
   "host:backToLobby": z.object({}),
   /** Lobby games: pick one, switch shuffling, start a fresh round, or stop the round. */
-  "host:minigame": z.object({ kind: z.enum(LOBBY_GAMES).optional(), mix: z.boolean().optional(), restart: z.boolean().optional(), stop: z.boolean().optional() }),
+  "host:minigame": z.object({ kind: z.enum(LOBBY_GAMES).optional(), mix: z.boolean().optional(), restart: z.boolean().optional(), stop: z.boolean().optional(), hide: z.string().max(40).optional() }),
   "host:sound": z.object({ id: z.enum(SOUNDBOARD) }),
   "player:join": z.object({
     name: z.string().trim().min(1).max(24),
@@ -131,7 +131,17 @@ export const clientEvents = {
   "player:reclaim": z.object({ playerId: id }),
   "player:buzz": z.object({}),
   /** Lobby games: taps since the last message, or (Count the pigs) the number picked. */
-  "player:tap": z.object({ n: z.number().int().min(1).max(10).optional(), pick: z.number().int().min(0).max(99).optional() }),
+  "player:tap": z.object({
+    n: z.number().int().min(1).max(10).optional(),
+    pick: z.number().int().min(0).max(10_000_000).optional(),
+    target: z.string().max(40).optional(),
+    text: z.string().max(80).optional(),
+    act: z.enum(["throw", "duck", "reload"]).optional(),
+    x: z.number().min(-1).max(1).optional(),
+    y: z.number().min(-1).max(1).optional(),
+    dir: z.number().int().min(0).max(3).optional(),
+    ink: drawingSchema.optional(),
+  }),
   "player:finalWager": z.object({ amount: z.number().int().min(0).max(10_000_000) }),
   "player:finalAnswer": z.object({ drawing: drawingSchema.nullable(), typed: z.string().max(200).optional() }),
   "player:allPlayAnswer": z.object({ drawing: drawingSchema.nullable(), typed: z.string().max(200).optional() }),
