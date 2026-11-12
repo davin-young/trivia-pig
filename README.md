@@ -38,6 +38,10 @@ own copy (see [Quick start](#quick-start-docker)). A public instance runs at <ht
     player wins a Crowd Favorite award. The audience can join even when the room is locked.
     An audience link (`/join?code=CODE&audience=1`) opens straight on "join the audience", and
     the host can set an audience limit.
+  - *Boards from your AI:* `/ai` has a prompt to paste into any assistant and a box for its
+    reply. Assistants that support MCP connect to `/mcp` with a personal token and save boards
+    straight to the account; the same token works on `/api/v1/boards`. Tokens reach only their
+    owner's boards.
   - *Spectators and streaming:* `/watch/CODE` lets anyone follow the game on their own screen
     without joining. For streaming software, `/display/CODE?obs=1` is the big screen with no
     buttons and sound that starts by itself (`&mute=1` for silence), and `/overlay/CODE` is a

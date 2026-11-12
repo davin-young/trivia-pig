@@ -53,6 +53,22 @@ model User {
   ownedTeams  Membership[] @relation("owner")
   memberships Membership[] @relation("member")
   invites     Invite[]
+  apiTokens   ApiToken[]
+}
+
+/// A personal access token for the board API and the MCP server. Only its hash is stored.
+model ApiToken {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name       String
+  tokenHash  String    @unique
+  /// Last four characters, to tell tokens apart in the list.
+  hint       String
+  lastUsedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
 }
 
 model Session {
@@ -156,21 +172,21 @@ model Media {
 }
 
 model Game {
-  id            String     @id @default(cuid())
-  code          String
-  ownerId       String
-  owner         User       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  boardId       String?
-  board         Board?     @relation(fields: [boardId], references: [id], onDelete: SetNull)
-  boardTitle    String
-  status        GameStatus @default(LOBBY)
-  setup         Json
-  actions       Json       @default("[]")
-  state         Json?
-  rematchOfId   String?
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
-  finishedAt    DateTime?
+  id          String     @id @default(cuid())
+  code        String
+  ownerId     String
+  owner       User       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  boardId     String?
+  board       Board?     @relation(fields: [boardId], references: [id], onDelete: SetNull)
+  boardTitle  String
+  status      GameStatus @default(LOBBY)
+  setup       Json
+  actions     Json       @default("[]")
+  state       Json?
+  rematchOfId String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  finishedAt  DateTime?
 
   players       GamePlayer[]
   pairingTokens PairingToken[]
