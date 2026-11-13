@@ -463,10 +463,18 @@ export class LiveGame {
     return this.state.phase === "lobby" && this.state.settings.lobbyGame;
   }
 
+  /** Everyone in the lobby with their phone connected plays the lobby games. */
+  private miniRoster() {
+    const online = new Set([...this.sockets.values()].filter((s) => s.data.role === "player").map((s) => s.data.playerId));
+    const here = Object.values(this.state.players).filter((p) => !p.removed && !p.audience);
+    this.mini.headcount = here.length;
+    this.mini.roster = here.filter((p) => online.has(p.id)).map((p) => p.id);
+  }
+
   /** A player tapped in a lobby game. It never touches the game log. */
   miniTap(playerId: string, input: TapInput): TapResult | null {
     if (!this.miniOn) return null;
-    this.mini.headcount = Object.values(this.state.players).filter((p) => !p.removed && !p.audience).length;
+    this.miniRoster();
     const before = this.mini.view(gameNow()).round?.phase;
     const { changed, data } = this.mini.tap(playerId, input, gameNow());
     if (!changed) return data;
@@ -481,6 +489,7 @@ export class LiveGame {
   /** The host picks a game, switches shuffling, restarts the round or stops it. */
   miniControl(opts: { kind?: LobbyGameKind; mix?: boolean; restart?: boolean; stop?: boolean; hide?: string }): boolean {
     if (!this.miniOn) return false;
+    this.miniRoster();
     this.mini.configure(opts);
     if (opts.hide) this.mini.hide(opts.hide, gameNow());
     if (opts.stop) this.mini.stop();

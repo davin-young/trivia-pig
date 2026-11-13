@@ -18,8 +18,8 @@ const MAX_MS: Partial<Record<LobbyGameKind, number>> = { race: 45_000, reflex: 0
 const PARTY_MAX_MS = 5 * 60_000;
 
 /**
- * Lobby games: something to do while the room fills up. A player's first tap starts a
- * countdown, the round runs, the winner is shown, and the next round can begin. All of it
+ * Lobby games: something to do while the room fills up. A player's first tap (or the host)
+ * starts a countdown, everyone in the lobby is in, the round runs, the winner is shown, and the next round can begin. All of it
  * lives in memory only: never in the game log, never in the database, no effect on the game.
  */
 export class LobbyGames {
@@ -28,6 +28,8 @@ export class LobbyGames {
   mix = true;
   /** How many players are in the lobby: shuffling skips games that need more people. */
   headcount = Infinity;
+  /** Players in the lobby right now: all of them are in every round, with nothing to tap. */
+  roster: string[] = [];
   /** The round of a bigger game (hot potato, doodle guess, …), when one is on. */
   private party: Party | null = null;
   private partyNext = 0;
@@ -86,13 +88,19 @@ export class LobbyGames {
     const Game = PARTY_GAMES[this.kind];
     this.party = Game ? new Game(this.random) : null;
     this.endsAt = this.party ? this.startsAt + PARTY_MAX_MS : this.kind === "reflex" ? this.goAt + 8000 : this.startsAt + (MAX_MS[this.kind] ?? 0);
+    this.enroll();
+  }
+
+  /** Put everyone in the lobby into the round. */
+  private enroll() {
+    for (const id of this.roster) this.join(id);
   }
 
   /** The countdown is over: a bigger game starts if enough people are in. */
   private startParty(now: number) {
     if (!this.party) return;
     const need = LOBBY_GAME_INFO[this.kind].min ?? 1;
-    if (this.score.size < need) return this.finish(now, null, `${LOBBY_GAME_INFO[this.kind].name} needs ${need} players. Tap "I'm in" next time!`);
+    if (this.score.size < need) return this.finish(now, null, `${LOBBY_GAME_INFO[this.kind].name} needs ${need} players.`);
     this.party.start([...this.score.keys()], now);
     this.partyNext = this.party.tick(now);
   }
@@ -156,6 +164,7 @@ export class LobbyGames {
   tick(now: number): number | null {
     if (this.phase === "countdown" && now >= this.startsAt) {
       this.phase = "running";
+      this.enroll(); // whoever arrived during the countdown
       this.startParty(now);
     }
     this.stepParty(now);
@@ -294,6 +303,8 @@ export class LobbyGames {
       round.count = done || (secrets && this.phase === "running") ? this.count : null;
       round.out = this.out.size;
     } else {
+      const side = viewer ? this.side.get(viewer) : undefined;
+      if (side !== undefined) round.mySide = side;
       round.sides = this.sides();
       round.pull = Math.max(-1, Math.min(1, this.pull / this.tugGoal()));
     }
