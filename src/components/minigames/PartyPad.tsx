@@ -9,6 +9,7 @@ import type { GameView } from "@/engine/views";
 import { DOODLE_CANVAS, PATTERN_COLORS, type MiniRound, type MiniX, type TapInput } from "@/shared/minigames";
 import { compactDrawing } from "@/shared/strokes";
 import { MazeView } from "./MazeView";
+import { Pig } from "./Pig";
 
 export interface PadProps {
   view: GameView;
@@ -27,66 +28,117 @@ function useNames(view: GameView) {
   return (id: string | null | undefined) => view.players.find((p) => p.id === id)?.name ?? "Someone";
 }
 
-/** "12 s left" for the step the round is on. */
-function TimeLeft({ endsAt, now }: { endsAt?: number; now: () => number }) {
+/** How long is left in the step the round is on. */
+function Clock({ endsAt, now }: { endsAt?: number; now: () => number }) {
   const left = useCountdown(endsAt ?? null, now);
   if (left === null) return null;
-  return <div className="mt-2 text-xs text-white/50">{Math.max(0, Math.ceil(left / 1000))} s left</div>;
+  const secs = Math.max(0, Math.ceil(left / 1000));
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-full bg-black/40 px-2.5 py-0.5 text-sm ${secs <= 3 ? "text-red-300" : "text-white/70"}`} aria-label={`${secs} seconds left`}>
+      ⏳ <b className="money text-base tabular-nums">{secs}</b>
+    </span>
+  );
+}
+function TimeLeft(props: { endsAt?: number; now: () => number }) {
+  return (
+    <div className="mt-2 flex justify-center">
+      <Clock {...props} />
+    </div>
+  );
+}
+
+/** Nothing to press right now: say what happened, big and friendly. */
+function Status({ emoji, title, sub }: { emoji: string; title: string; sub?: string }) {
+  return (
+    <div className="py-4">
+      <div className="anim-pop text-6xl">{emoji}</div>
+      <div className="mt-1 text-xl font-black">{title}</div>
+      {sub && <div className="text-sm text-white/60">{sub}</div>}
+    </div>
+  );
+}
+
+/** Players to tap, as pigs with their drawn faces. `quick` acts on touch-down (for games where speed matters). */
+function PigGrid({ view, ids, chosen, disabled, quick, onPick }: { view: GameView; ids: string[]; chosen?: string | null; disabled?: boolean; quick?: boolean; onPick: (id: string) => void }) {
+  const name = useNames(view);
+  const cols = ids.length <= 3 ? Math.max(1, ids.length) : ids.length <= 6 ? 3 : 4;
+  return (
+    <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
+      {ids.map((id) => (
+        <button
+          key={id}
+          type="button"
+          disabled={disabled}
+          aria-label={name(id)}
+          aria-pressed={chosen === id}
+          className={`flex justify-center overflow-hidden rounded-2xl border-2 px-1 pb-2 pt-3 transition active:scale-95 disabled:opacity-40 ${chosen === id ? "border-gold bg-gold/20" : "border-transparent bg-white/5"}`}
+          style={{ touchAction: "manipulation" }}
+          onPointerDown={quick ? () => onPick(id) : undefined}
+          onClick={quick ? undefined : () => onPick(id)}
+        >
+          <Pig view={view} id={id} size={cols === 4 ? 46 : 56} unit="px" badge={chosen === id ? "✅" : undefined} />
+        </button>
+      ))}
+    </div>
+  );
 }
 
 function Potato({ view, x, myId, send }: PadProps) {
   const name = useNames(view);
-  if (x.gone?.includes(myId)) return <div className="py-4 text-lg font-bold">💥 It popped on you. You&apos;re out!</div>;
-  if (x.holder !== myId) return <div className="py-4 text-lg">💣 {name(x.holder)} has the mud bomb…</div>;
-  return (
-    <>
-      <div className="anim-pop mb-2 text-xl font-black text-red-300">💣 YOU HAVE IT! Pass it:</div>
-      <div className="grid grid-cols-2 gap-2">
-        {(x.alive ?? []).filter((p) => p !== myId).map((p) => (
-          <button key={p} type="button" className={`${big} bg-gold !py-4 !text-lg text-black`} style={{ touchAction: "manipulation" }} onPointerDown={() => void send({ target: p })}>
-            {name(p)}
-          </button>
-        ))}
-      </div>
-    </>
-  );
-}
-
-function Mud({ view, x, myId, send, now }: PadProps) {
-  const name = useNames(view);
-  if (x.gone?.includes(myId)) return <div className="py-4 text-lg font-bold">🟤 Splat! You&apos;re out.</div>;
-  const mud = x.mud?.[myId] ?? 0;
-  if (x.stage === "reveal") {
-    const mine = x.acts?.find((a) => a.id === myId);
+  if (x.gone?.includes(myId)) return <Status emoji="💥" title="It popped on you!" sub="You're out. Watch the big screen." />;
+  if (x.holder !== myId) {
     return (
-      <div className="py-3 text-lg">
-        {mine?.act === "duck" ? "🙇 You ducked." : mine?.act === "throw" ? `🟤 You threw at ${name(mine.target)}.` : "🪣 You scooped some mud."}
-        <div className="text-sm text-white/60">Watch the big screen…</div>
+      <div className="py-3">
+        <div className="flex justify-center">{x.holder && <Pig view={view} id={x.holder} size={96} unit="px" mood="panic" badge="💣" label={false} />}</div>
+        <div className="mt-3 text-lg font-bold">{name(x.holder)} has the mud bomb…</div>
+        <div className="text-sm text-white/60">Get ready to pass it on!</div>
       </div>
     );
   }
   return (
     <>
-      <div className="mb-2 text-sm text-white/70">
-        Turn {x.turn}. You have {"🟤".repeat(mud) || "no mud"}
+      <div className="anim-pop mb-2 rounded-2xl bg-red-600 py-2 text-xl font-black">💣 YOU HAVE IT! Tap a pig</div>
+      <PigGrid view={view} ids={(x.alive ?? []).filter((p) => p !== myId)} quick onPick={(p) => void send({ target: p })} />
+    </>
+  );
+}
+
+const action = "flex flex-col items-center gap-0.5 rounded-2xl py-3 text-lg font-black text-black transition active:scale-95 disabled:opacity-40";
+
+function Mud({ view, x, myId, send, now }: PadProps) {
+  const name = useNames(view);
+  if (x.gone?.includes(myId)) return <Status emoji="🫠" title="Splat! You're out" sub="Watch the big screen." />;
+  const mud = x.mud?.[myId] ?? 0;
+  if (x.stage === "reveal") {
+    const mine = x.acts?.find((a) => a.id === myId);
+    if (mine?.act === "duck") return <Status emoji="🙈" title="You ducked" sub="Watch the big screen…" />;
+    if (mine?.act === "throw") return <Status emoji="🟤" title={`You threw at ${name(mine.target)}`} sub="Watch the big screen…" />;
+    return <Status emoji="🪣" title="You scooped some mud" sub="Watch the big screen…" />;
+  }
+  const blob = "inline-block h-4 w-4 rounded-full";
+  return (
+    <>
+      <div className="mb-2 flex items-center justify-between gap-2 text-sm">
+        <span className="font-semibold text-white/80">Turn {x.turn}</span>
+        <span className="flex items-center gap-1 text-white/70" aria-label={`You have ${mud} mud`}>
+          Your mud:
+          {mud ? Array.from({ length: mud }, (_, i) => <span key={i} className={blob} style={{ background: "radial-gradient(circle at 35% 30%, #a8743d, #5b3a1a 75%)" }} />) : " none"}
+        </span>
+        <Clock endsAt={x.endsAt} now={now} />
       </div>
-      <div className="flex flex-col gap-2">
-        {(x.alive ?? []).filter((p) => p !== myId).map((p) => (
-          <button key={p} type="button" disabled={mud < 1} className={`${choice} ${x.mine?.act === "throw" && x.mine.target === p ? picked : ""}`} onClick={() => void send({ act: "throw", target: p })}>
-            🟤 Throw at {name(p)}
-          </button>
-        ))}
-        <div className="grid grid-cols-2 gap-2">
-          <button type="button" disabled={!x.mine?.canDuck} className={`${choice} text-center ${x.mine?.act === "duck" ? picked : ""}`} onClick={() => void send({ act: "duck" })}>
-            🙇 Duck
-          </button>
-          <button type="button" className={`${choice} text-center ${x.mine?.act === "reload" ? picked : ""}`} onClick={() => void send({ act: "reload" })}>
-            🪣 Scoop mud
-          </button>
-        </div>
+      <div className="mb-1 text-left text-xs uppercase tracking-wide text-white/50">{mud < 1 ? "No mud to throw: scoop some first" : "Throw at"}</div>
+      <PigGrid view={view} ids={(x.alive ?? []).filter((p) => p !== myId)} disabled={mud < 1} chosen={x.mine?.act === "throw" ? x.mine.target : null} onPick={(p) => void send({ act: "throw", target: p })} />
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        <button type="button" disabled={!x.mine?.canDuck} className={`${action} bg-[#7bdff2] ${x.mine?.act === "duck" ? "ring-4 ring-white" : ""}`} onClick={() => void send({ act: "duck" })}>
+          <span className="text-3xl leading-none">🙈</span>
+          Duck
+        </button>
+        <button type="button" className={`${action} bg-[#c79a5b] ${x.mine?.act === "reload" ? "ring-4 ring-white" : ""}`} onClick={() => void send({ act: "reload" })}>
+          <span className="text-3xl leading-none">🪣</span>
+          Scoop mud
+        </button>
       </div>
-      {!x.mine?.canDuck && <div className="mt-1 text-xs text-white/50">No ducking twice in a row.</div>}
-      <TimeLeft endsAt={x.endsAt} now={now} />
+      <div className="mt-2 text-xs text-white/50">{!x.mine?.canDuck ? "No ducking twice in a row." : x.mine?.act ? "Locked in. Tap something else to change it." : "Pick one before the time runs out."}</div>
     </>
   );
 }
@@ -107,7 +159,7 @@ function Sumo({ x, myId, send }: PadProps) {
     }, 100);
     return () => clearInterval(t);
   }, [send]);
-  if (out) return <div className="py-4 text-lg font-bold">🤼 You&apos;re out of the ring!</div>;
+  if (out) return <Status emoji="💫" title="You're out of the ring!" sub="Watch the big screen." />;
   const steer = (e: React.PointerEvent) => {
     const r = pad.current!.getBoundingClientRect();
     let dx = (e.clientX - (r.left + r.width / 2)) / (r.width / 2);
@@ -252,17 +304,11 @@ function Chain(props: PadProps) {
 }
 
 function Likely({ view, x, send, now }: PadProps) {
-  const name = useNames(view);
   return (
     <>
-      <div className="mb-2 text-base font-semibold">{x.prompt}</div>
-      <div className="grid grid-cols-2 gap-2">
-        {(x.alive ?? []).map((p) => (
-          <button key={p} type="button" className={`${choice} text-center ${x.mine?.target === p ? picked : ""}`} onClick={() => void send({ target: p })}>
-            {name(p)}
-          </button>
-        ))}
-      </div>
+      <div className="mb-2 text-base font-semibold">{x.prompt}…</div>
+      <PigGrid view={view} ids={x.alive ?? []} chosen={x.mine?.target} onPick={(p) => void send({ target: p })} />
+      <div className="mt-2 text-xs text-white/50">{x.mine?.target ? "Vote counted. Tap another pig to change it." : "Tap a pig to vote."}</div>
       <TimeLeft endsAt={x.endsAt} now={now} />
     </>
   );
@@ -333,7 +379,7 @@ export function litColor(x: MiniX, now: number): number {
 function Pattern({ x, myId, send, now }: PadProps) {
   useTick(60, x.stage === "show");
   const [flash, setFlash] = useState(-1);
-  if (x.gone?.includes(myId)) return <div className="py-4 text-lg font-bold">🧠 Wrong colour. You&apos;re out!</div>;
+  if (x.gone?.includes(myId)) return <Status emoji="🙃" title="Wrong colour. You're out!" sub="Watch the big screen." />;
   const lit = x.stage === "show" ? litColor(x, now()) : flash;
   const len = x.seq?.length ?? 0;
   return (

@@ -186,73 +186,64 @@ export function DrawingPad({ width, height, initial, multiColor, onChange, class
         <div className="pointer-events-none absolute inset-x-6 bottom-[22%] border-b border-dashed border-white/15" />
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        {multiColor && (
-          <div className="flex flex-wrap items-center gap-1.5" role="radiogroup" aria-label="Colour">
-            {PALETTE.map((c) => (
-              <button
-                key={c}
-                type="button"
-                aria-label={`Colour ${c}`}
-                aria-checked={tool === "pen" && brush !== "rainbow" && color === c}
-                role="radio"
-                onClick={() => {
-                  setColor(c);
-                  setTool("pen");
-                  if (brush === "rainbow") setBrush("solid");
-                }}
-                className={`h-8 w-8 rounded-full border-2 transition ${tool === "pen" && brush !== "rainbow" && color === c ? "scale-110 border-white ring-2 ring-white/50" : "border-white/20"}`}
-                style={{ background: c }}
-              />
-            ))}
-            <label className="relative h-8 w-8 cursor-pointer overflow-hidden rounded-full border-2 border-white/20" title="Custom colour"
-              style={{ background: "conic-gradient(red, yellow, lime, cyan, blue, magenta, red)" }}>
-              <input
-                type="color"
-                value={color}
-                onChange={(e) => {
-                  setColor(e.target.value);
-                  setTool("pen");
-                  if (brush === "rainbow") setBrush("solid");
-                }}
-                className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-                aria-label="Custom colour"
-              />
-            </label>
-          </div>
-        )}
-      </div>
-      <div className="flex flex-wrap items-center gap-2 text-sm">
-        <Seg>
-          {(Object.entries(BRUSH_SIZES) as [string, number][]).map(([name, px]) => (
-            <SegBtn key={name} active={size === px} onClick={() => setSize(px)} label={name}>
-              <span className="inline-block rounded-full bg-white" style={{ width: px / 1.5 + 2, height: px / 1.5 + 2 }} />
-            </SegBtn>
+      {multiColor && (
+        <div className="flex items-center gap-1 overflow-x-auto p-1" role="radiogroup" aria-label="Colour">
+          {PALETTE.map((c) => (
+            <button
+              key={c}
+              type="button"
+              aria-label={`Colour ${c}`}
+              aria-checked={tool === "pen" && brush !== "rainbow" && color === c}
+              role="radio"
+              onClick={() => {
+                setColor(c);
+                setTool("pen");
+                if (brush === "rainbow") setBrush("solid");
+              }}
+              className={`h-7 w-7 shrink-0 rounded-full border-2 transition ${tool === "pen" && brush !== "rainbow" && color === c ? "scale-110 border-white ring-2 ring-white/50" : "border-white/20"}`}
+              style={{ background: c }}
+            />
           ))}
-        </Seg>
-        <Seg>
-          <SegBtn active={tool === "pen"} onClick={() => setTool("pen")} label="Pen">✏️</SegBtn>
-          <SegBtn active={tool === "eraser"} onClick={() => setTool("eraser")} label="Eraser">🧽</SegBtn>
-        </Seg>
+          <label className="relative h-7 w-7 shrink-0 cursor-pointer overflow-hidden rounded-full border-2 border-white/20" title="Custom colour" style={{ background: "conic-gradient(red, yellow, lime, cyan, blue, magenta, red)" }}>
+            <input
+              type="color"
+              value={color}
+              onChange={(e) => {
+                setColor(e.target.value);
+                setTool("pen");
+                if (brush === "rainbow") setBrush("solid");
+              }}
+              className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+              aria-label="Custom colour"
+            />
+          </label>
+        </div>
+      )}
+      {/* One row of tools, so the pad and what comes after it fit on a phone screen. */}
+      <div className="flex overflow-hidden rounded-lg border border-white/20 bg-white/5 text-sm">
+        <SegBtn
+          onClick={() => {
+            const sizes = Object.values(BRUSH_SIZES) as number[];
+            setSize(sizes[(sizes.indexOf(size) + 1) % sizes.length]);
+          }}
+          label={`Brush size: ${(Object.entries(BRUSH_SIZES) as [string, number][]).find(([, px]) => px === size)?.[0] ?? "medium"} (tap to change)`}
+        >
+          <span className="inline-block rounded-full bg-white" style={{ width: size / 1.5 + 2, height: size / 1.5 + 2 }} />
+        </SegBtn>
+        <SegBtn active={tool === "eraser"} onClick={() => setTool(tool === "eraser" ? "pen" : "eraser")} label="Eraser">🧽</SegBtn>
         {multiColor && (
-          <Seg>
+          <>
             <SegBtn active={tool === "pen" && brush === "rainbow"} onClick={() => { setBrush(brush === "rainbow" ? "solid" : "rainbow"); setTool("pen"); }} label="Rainbow brush">🌈</SegBtn>
             <SegBtn active={tool === "pen" && brush === "glow"} onClick={() => { setBrush(brush === "glow" ? "solid" : "glow"); setTool("pen"); }} label="Neon glow">✨</SegBtn>
-          </Seg>
+          </>
         )}
-        <Seg>
-          <SegBtn onClick={undo} disabled={!undoStack.length} label="Undo">↶</SegBtn>
-          <SegBtn onClick={redo} disabled={!redoStack.length} label="Redo">↷</SegBtn>
-          <SegBtn onClick={clear} disabled={!strokes.length} label="Clear">🗑</SegBtn>
-        </Seg>
+        <SegBtn onClick={undo} disabled={!undoStack.length} label="Undo">↶</SegBtn>
+        <SegBtn onClick={clear} disabled={!strokes.length} label="Clear">🗑</SegBtn>
       </div>
     </div>
   );
 }
 
-function Seg({ children }: { children: React.ReactNode }) {
-  return <div className="flex overflow-hidden rounded-lg border border-white/20 bg-white/5">{children}</div>;
-}
 function SegBtn({ children, active, onClick, disabled, label }: { children: React.ReactNode; active?: boolean; onClick: () => void; disabled?: boolean; label: string }) {
   return (
     <button
@@ -262,7 +253,7 @@ function SegBtn({ children, active, onClick, disabled, label }: { children: Reac
       aria-pressed={active}
       disabled={disabled}
       onClick={onClick}
-      className={`grid h-10 min-w-10 place-items-center px-2 transition disabled:opacity-30 ${active ? "bg-white/25" : "hover:bg-white/10"}`}
+      className={`grid h-10 min-w-10 flex-1 place-items-center px-2 transition disabled:opacity-30 ${active ? "bg-white/25" : "hover:bg-white/10"}`}
     >
       {children}
     </button>
