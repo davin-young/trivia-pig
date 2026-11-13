@@ -101,13 +101,18 @@ export default function PlayerClient({ code }: { code: string }) {
     <main className="flex min-h-dvh flex-col overflow-x-clip bg-[var(--board-edge)] pb-[env(safe-area-inset-bottom)]">
       <ConnBanner status={status} error={error} />
       <header className="flex items-center gap-3 border-b border-white/10 bg-[var(--board-deep)] px-4 py-2">
-        <div className="h-10 w-24 shrink-0">
-          {myPlayer.signature ? <Ink drawing={myPlayer.signature} className="h-full w-full" /> : <span className="font-bold">{myPlayer.name}</span>}
+        {myPlayer.avatar && (
+          <div className="h-10 w-10 shrink-0 overflow-hidden rounded-full bg-[var(--board-edge)] ring-1 ring-white/30">
+            <Ink drawing={myPlayer.avatar} className="h-full w-full" />
+          </div>
+        )}
+        <div className="flex h-10 w-24 shrink-0 items-center">
+          {myPlayer.signature ? <Ink drawing={myPlayer.signature} className="h-full w-full" /> : <span className="truncate font-bold">{myPlayer.name}</span>}
         </div>
         <div className="min-w-0 flex-1 truncate text-sm text-white/60">
           {view.settings.mode === "team" && me.contestantId ? contestantName(view, me.contestantId) : view.title}
         </div>
-        <MyScore score={view.scores[me.contestantId ?? ""] ?? 0} />
+        {view.phase === "lobby" ? <span className="money text-sm tracking-widest">{view.code}</span> : <MyScore score={view.scores[me.contestantId ?? ""] ?? 0} />}
         <StatusDot status={status} />
       </header>
       <ScoreToast score={view.scores[me.contestantId ?? ""] ?? 0} streak={view.streaks[me.contestantId ?? ""] ?? 0} />
@@ -659,66 +664,103 @@ function AllPlayPlayer({ view, emit, now }: { view: GameView; emit: Emit; now: (
   );
 }
 
+/** Redraw your name or your face while waiting in the lobby. */
+function EditCard({ view, emit, start, onClose }: { view: GameView; emit: Emit; start: "name" | "face"; onClose: () => void }) {
+  const p = view.players.find((x) => x.id === view.me!.playerId)!;
+  const faces = view.settings.avatars;
+  const [tab, setTab] = useState<"name" | "face">(faces ? start : "name");
+  const [sig, setSig] = useState<Drawing | null>(p.signature);
+  const [face, setFace] = useState<Drawing | null>(p.avatar ?? null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const clean = (d: Drawing | null) => (d && !isEmptyDrawing(d) ? d : null);
+  async function save() {
+    setBusy(true);
+    const r = await emit("player:signature", { signature: clean(sig), ...(faces ? { avatar: clean(face) } : {}) });
+    setBusy(false);
+    if (!r.ok) return setMsg(r.error);
+    // Keep the saved player card in step, when this device remembers one.
+    if (wantsRemembering()) void saveProfile({ name: p.name, signature: clean(sig), ...(faces ? { avatar: clean(face) } : {}) });
+    onClose();
+  }
+  return (
+    <div className="mx-auto flex w-full max-w-md flex-col gap-3">
+      <h2 className="text-lg font-semibold">Change how you look</h2>
+      {faces && (
+        <div className="grid grid-cols-2 gap-1 rounded-xl bg-white/5 p-1" role="tablist">
+          {(["name", "face"] as const).map((t) => (
+            <button key={t} type="button" role="tab" aria-selected={tab === t} className={`rounded-lg py-2.5 font-semibold ${tab === t ? "bg-gold text-black" : "text-white/70"}`} onClick={() => setTab(t)}>
+              {t === "name" ? "✍️ Name" : "🎨 Face"}
+            </button>
+          ))}
+        </div>
+      )}
+      {tab === "name" ? (
+        <DrawingPad key="name" width={NAME_CANVAS.w} height={NAME_CANVAS.h} multiColor={view.settings.multiColor} initial={sig} onChange={setSig} placeholder="Draw your name here" />
+      ) : (
+        <div className="mx-auto w-full max-w-[18rem]">
+          <DrawingPad key="face" width={AVATAR_CANVAS.w} height={AVATAR_CANVAS.h} multiColor={view.settings.multiColor} initial={face} onChange={setFace} placeholder="A face, a pig, anything" />
+        </div>
+      )}
+      {view.settings.familyMode && <p className="text-xs text-white/50">Family mode is on: the host approves drawings before they appear on the big screen.</p>}
+      {msg && <div className="rounded-lg bg-red-600/20 p-3 text-red-300" role="alert">{msg}</div>}
+      <div className="flex gap-2">
+        <button className="btn-ghost flex-1 py-3" disabled={busy} onClick={onClose}>Cancel</button>
+        <button className="btn-primary flex-1 py-3" disabled={busy} onClick={save}>{busy ? "Saving…" : "Save"}</button>
+      </div>
+    </div>
+  );
+}
+
 function LobbyWait({ view, mini, emit, now }: { view: GameView; mini: MiniView | null; emit: Emit; now: () => number }) {
   const left = useCountdown(view.startingAt, now);
   const isVip = view.vipId === view.me!.playerId;
-  const others = view.players.filter((x) => !x.removed).length - 1;
+  const count = view.players.filter((x) => !x.removed).length;
   const me = view.me!;
   const p = view.players.find((x) => x.id === me.playerId)!;
-  const [redraw, setRedraw] = useState(false);
-  const [draft, setDraft] = useState<Drawing | null>(null);
+  const [edit, setEdit] = useState<"name" | "face" | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
-  if (redraw) {
-    return (
-      <div className="flex flex-col gap-3">
-        <h2 className="text-lg font-semibold">Redraw your name</h2>
-        <DrawingPad width={NAME_CANVAS.w} height={NAME_CANVAS.h} multiColor={view.settings.multiColor} initial={p.signature} onChange={setDraft} />
-        {msg && <div className="text-red-300">{msg}</div>}
-        <div className="flex gap-2">
-          <button className="btn-ghost flex-1" onClick={() => setRedraw(false)}>Cancel</button>
-          <button
-            className="btn-primary flex-1"
-            onClick={async () => {
-              const r = await emit("player:signature", { signature: draft && !isEmptyDrawing(draft) ? draft : null });
-              if (r.ok) setRedraw(false);
-              else setMsg(r.error);
-            }}
-          >
-            Save
-          </button>
-        </div>
-      </div>
-    );
-  }
+  if (edit) return <EditCard view={view} emit={emit} start={edit} onClose={() => setEdit(null)} />;
   // A bigger lobby game needs the whole screen: the game goes first, everything else waits.
   if (left === null && mini?.round && PARTY_KINDS[mini.round.kind]) {
     return (
-      <div className="flex flex-1 flex-col items-center gap-4 text-center">
+      <div className="mx-auto flex w-full max-w-md flex-1 flex-col gap-3 text-center">
         <MiniPad view={view} mini={mini} emit={emit} now={now} />
-        {view.settings.reactions && <ReactionBar emit={emit} />}
+        {view.settings.reactions && <div className="mt-auto"><ReactionBar emit={emit} /></div>}
       </div>
     );
   }
+  const badge = "absolute -bottom-1 -right-1 grid h-7 w-7 place-items-center rounded-full bg-gold text-sm text-black shadow";
+  const starter = view.vipId ? (view.players.find((x) => x.id === view.vipId)?.name ?? "The host") : "The host";
+  const soFar = `${count} ${count === 1 ? "player" : "players"} so far.`;
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-5 text-center">
-      <div className="text-6xl">🎉</div>
-      <h2 className="text-2xl font-bold">You&apos;re in!</h2>
-      <div className="relative aspect-[5/2] w-full max-w-sm rounded-xl bg-[var(--board)] p-2">
-        {p.signature ? <Ink drawing={p.signature} className="h-full w-full" /> : <div className="cat-text grid h-full place-items-center text-3xl">{p.name}</div>}
-        {p.avatar && (
-          <div className="absolute -right-3 -top-3 h-16 w-16 rounded-full bg-[var(--board-deep)] ring-2 ring-white/40">
-            <Ink drawing={p.avatar} className="h-full w-full" />
+    <div className="mx-auto flex w-full max-w-md flex-1 flex-col gap-3 text-center">
+      <section className="rounded-2xl border border-line bg-white/5 p-3">
+        <div className="flex items-center gap-3">
+          {view.settings.avatars && (
+            <button type="button" aria-label="Change your face" className="relative grid h-20 w-20 shrink-0 place-items-center rounded-full bg-[var(--board-deep)] ring-2 ring-white/30 active:scale-95" onClick={() => setEdit("face")}>
+              {p.avatar ? <Ink drawing={p.avatar} className="h-full w-full" /> : <span className="text-3xl opacity-60">🙂</span>}
+              <span className={badge} aria-hidden>{p.avatar ? "✏️" : "＋"}</span>
+            </button>
+          )}
+          <button type="button" aria-label="Redraw your name" className="relative aspect-[5/2] min-w-0 flex-1 rounded-xl bg-[var(--board)] p-1.5 active:scale-[0.98]" onClick={() => setEdit("name")}>
+            {p.signature ? <Ink drawing={p.signature} className="h-full w-full" /> : <span className="cat-text grid h-full place-items-center truncate text-2xl">{p.name}</span>}
+            <span className={badge} aria-hidden>✏️</span>
+          </button>
+        </div>
+        <div className="mt-3 flex items-baseline justify-between gap-2 text-left text-sm">
+          <span className="min-w-0 truncate">✅ You&apos;re in as <b>{p.name}</b></span>
+          <span className="shrink-0 text-xs text-white/50">Tap {view.settings.avatars ? "either" : "it"} to redraw</span>
+        </div>
+        {p.signatureHidden && (
+          <div className="mt-2 rounded-lg bg-yellow-400/10 p-2 text-left text-sm text-yellow-200">
+            {view.settings.familyMode ? "Your drawings show on the big screen once the host approves them." : "The host hid your drawing. Try redrawing it."}
           </div>
         )}
-      </div>
-      {p.signatureHidden && (
-        <div className="text-sm text-yellow-300">
-          {view.settings.familyMode ? "Your drawing shows on the big screen once the host approves it." : "The host hid your drawing — try redrawing it."}
-        </div>
-      )}
-      <button className="btn-ghost" onClick={() => setRedraw(true)}>✏️ Redraw my name</button>
+      </section>
+
       {left !== null ? (
-        <div className="w-full max-w-sm rounded-2xl border border-gold/60 bg-gold/10 p-4">
+        <section className="rounded-2xl border border-gold/60 bg-gold/10 p-4">
           <div className="text-sm text-white/70">Starting in</div>
           <div className="money text-6xl">{Math.max(1, Math.ceil(left / 1000))}</div>
           {isVip && (
@@ -726,30 +768,38 @@ function LobbyWait({ view, mini, emit, now }: { view: GameView; mini: MiniView |
               Wait, not yet
             </button>
           )}
-        </div>
+        </section>
       ) : isVip ? (
-        <div className="w-full max-w-sm rounded-2xl border border-gold/60 bg-gold/10 p-4">
-          <div className="mb-2 text-sm text-white/80">👑 You were first in, so you can start the game.</div>
+        <section className="rounded-2xl border border-gold/60 bg-gold/10 p-3">
+          <div className="mb-2 text-sm text-white/80">👑 You were first in, so you start the game. {soFar}</div>
           <button
             className="btn-primary w-full py-4 text-xl"
             onClick={async () => {
-              if (others < 1 && !confirm("You are the only player so far. Start anyway?")) return;
+              if (count < 2 && !confirm("You are the only player so far. Start anyway?")) return;
               const r = await emit("player:start", {});
               setMsg(r.ok ? null : r.error);
             }}
           >
             Everybody&apos;s in!
           </button>
-          {msg && <div className="mt-2 text-sm text-red-300">{msg}</div>}
-        </div>
+          {msg && <div className="mt-2 text-sm text-red-300" role="alert">{msg}</div>}
+        </section>
       ) : (
-        <p className="text-white/60">
-          Watch the big screen. {view.vipId ? `${view.players.find((x) => x.id === view.vipId)?.name ?? "The host"} starts the game when everybody is in.` : "The host starts the game when everybody is in."}
-        </p>
+        <section className="flex items-center gap-3 rounded-2xl border border-line bg-white/5 p-3 text-left">
+          <span className="relative flex h-3 w-3 shrink-0" aria-hidden>
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-gold opacity-60" />
+            <span className="relative inline-flex h-3 w-3 rounded-full bg-gold" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="font-semibold">Waiting for the game to start</div>
+            <div className="text-sm text-white/60">{starter} starts it when everybody is in. {soFar}</div>
+          </div>
+        </section>
       )}
+
       {left === null && <MiniPad view={view} mini={mini} emit={emit} now={now} />}
       {view.settings.reactions && (
-        <div className="w-full max-w-sm">
+        <div className="mt-auto pt-2">
           <div className="text-xs text-white/50">Say hi on the big screen</div>
           <ReactionBar emit={emit} />
         </div>
