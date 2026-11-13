@@ -244,3 +244,26 @@ describe("pig maze", () => {
     expect(r.round(t)).toMatchObject({ phase: "done", winnerId: "a" });
   });
 });
+
+describe("who has answered", () => {
+  it("screens are told who has chosen in a mud fight, never what", () => {
+    const r = round("mud", ["a", "b", "c"]);
+    r.round(START);
+    r.g.tap("a", { act: "duck" }, START + 100);
+    const x = r.x("b", START + 100);
+    expect(x.ready).toEqual(["a"]);
+    expect(x.acts).toBeUndefined();
+  });
+
+  it("split the room shows who picked which side only once it is over", () => {
+    const r = round("split", ["a", "b", "c"]);
+    r.round(START);
+    r.g.tap("a", { pick: 1 }, START + 10);
+    const mid = r.x(null, START + 10);
+    expect(mid.ready).toEqual(["a"]);
+    expect(mid.picks).toBeUndefined();
+    r.g.tap("b", { pick: 1 }, START + 20);
+    r.g.tap("c", { pick: 0 }, START + 30);
+    expect(r.round(START + 30).x!.picks).toEqual({ a: 1, b: 1, c: 0 });
+  });
+});

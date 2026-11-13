@@ -206,6 +206,7 @@ export class MudFight extends Party {
       gone: this.gone,
       mud: Object.fromEntries(this.mud),
       chosen: this.choices.size,
+      ready: [...this.choices.keys()],
       acts: this.stage === "reveal" ? this.acts : undefined,
       mine: viewer ? { act: mine?.act, target: mine?.target, canDuck: !this.ducked.has(viewer) } : undefined,
     };
@@ -466,6 +467,8 @@ class WriteVote {
       prompt: this.prompt,
       wrote: this.answers.size,
       voted: this.votes.size,
+      alive: this.players(),
+      ready: [...(voting ? this.votes : this.answers).keys()],
       // Who wrote what stays secret until the round is over.
       options: voting ? this.order.map((id) => ({ text: this.answers.get(id) ?? "", ...(done ? { by: id, votes: this.count(id) } : {}) })) : undefined,
       mine: viewer ? { wrote: this.answers.has(viewer), voted: this.votes.has(viewer), own: this.order.indexOf(viewer) } : undefined,
@@ -605,7 +608,7 @@ export class Likely extends Party {
     for (const [voter, v] of this.votes) if (v === id) this.votes.delete(voter);
   }
   view(viewer: string | null, done: boolean): MiniX {
-    return { prompt: this.prompt, endsAt: this.endsAt, voted: this.votes.size, alive: this.players, tally: done ? this.tally() : undefined, mine: viewer ? { target: this.votes.get(viewer) } : undefined };
+    return { prompt: this.prompt, endsAt: this.endsAt, voted: this.votes.size, alive: this.players, ready: [...this.votes.keys()], tally: done ? this.tally() : undefined, mine: viewer ? { target: this.votes.get(viewer) } : undefined };
   }
 }
 
@@ -648,6 +651,8 @@ export class Guess extends Party {
       unit: this.question.unit,
       endsAt: this.endsAt,
       voted: this.values.size,
+      alive: this.players,
+      ready: [...this.values.keys()],
       answer: done ? this.question.a : undefined,
       values: done ? this.ranked().slice(0, 8) : undefined,
       mine: viewer ? { value: this.values.get(viewer) } : undefined,
@@ -695,7 +700,10 @@ export class Split extends Party {
       sideNames: [this.question.a, this.question.b],
       endsAt: this.endsAt,
       voted: this.sides.size,
+      alive: this.players,
+      ready: [...this.sides.keys()],
       counts: done ? this.counts() : undefined,
+      picks: done ? Object.fromEntries(this.sides) : undefined,
       mine: viewer ? { side: this.sides.get(viewer) } : undefined,
     };
   }
