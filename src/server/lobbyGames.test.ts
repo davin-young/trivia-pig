@@ -153,3 +153,23 @@ describe("choosing games", () => {
     expect(r.view(1300)).toMatchObject({ kind: "tug", round: null });
   });
 });
+
+describe("everyone in the lobby plays", () => {
+  it("puts the whole lobby in when a round starts, with nothing to tap", () => {
+    const r = new LobbyGames(() => 0);
+    r.configure({ kind: "tug", mix: false });
+    r.roster = ["a", "b", "c"];
+    r.tap("a", {}, 1000);
+    expect(r.view(1100).round?.players).toBe(3);
+    expect(r.view(1100, false, "b").round?.mySide).toBe(1);
+  });
+
+  it("adds someone who arrives during the countdown", () => {
+    const r = new LobbyGames(() => 0);
+    r.configure({ kind: "race", mix: false });
+    r.roster = ["a"];
+    r.restart(1000);
+    r.roster = ["a", "b"];
+    expect(r.view(1000 + 3000 + 10).round?.players).toBe(2);
+  });
+});

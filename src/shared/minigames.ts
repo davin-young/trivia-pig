@@ -128,6 +128,8 @@ export interface MiniRound {
   // tug: -1 (all the way to side 0) .. 1 (all the way to side 1)
   pull?: number;
   sides?: [number, number];
+  /** Which side the player this was sent to pulls for. */
+  mySide?: 0 | 1;
   /** The bigger games keep their state here. */
   x?: MiniX;
   /** For the host only: things players typed or drew that the host can remove. */

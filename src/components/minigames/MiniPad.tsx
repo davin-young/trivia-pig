@@ -11,7 +11,7 @@ type Emit = ReturnType<typeof useGame>["emit"];
 
 /**
  * Lobby games on the phone: something to do while the room fills up. Anyone's first tap
- * starts a countdown for everyone; the round itself plays out on the big screen.
+ * starts a countdown and everyone in the lobby is in; the round itself plays out on the big screen.
  */
 export function MiniPad({ view, mini, emit, now }: { view: GameView; mini: MiniView | null; emit: Emit; now: () => number }) {
   const myId = view.me!.playerId;
@@ -56,22 +56,30 @@ export function MiniPad({ view, mini, emit, now }: { view: GameView; mini: MiniV
   if (!mini) return null;
   const info = LOBBY_GAME_INFO[round?.kind ?? mini.kind];
   const nameOf = (id: string | null) => view.players.find((p) => p.id === id)?.name ?? "Someone";
-  const mySide = me.side !== undefined ? TUG_SIDES[me.side] : null;
+  const sideNo = round?.mySide ?? me.side;
+  const mySide = sideNo !== undefined ? TUG_SIDES[sideNo] : null;
 
   if (!round) {
     return (
-      <div className="w-full max-w-sm">
-        <button type="button" className="btn-ghost w-full py-3" onClick={() => void send({ n: 1 })}>
-          {info.emoji} Play {info.name} while you wait
+      <section className="w-full rounded-2xl border border-line bg-white/5 p-3 text-left">
+        <div className="text-xs uppercase tracking-wide text-white/50">While you wait</div>
+        <div className="mt-1 flex items-center gap-3">
+          <div className="text-4xl" aria-hidden>{info.emoji}</div>
+          <div className="min-w-0 flex-1">
+            <div className="font-bold">{info.name}</div>
+            <div className="text-sm text-white/60">{info.how}</div>
+          </div>
+        </div>
+        <button type="button" className="btn-primary mt-3 w-full py-3 text-lg" onClick={() => void send({ n: 1 })}>
+          Start it for everyone
         </button>
-        <div className="mt-1 text-xs text-white/50">{info.how}</div>
-      </div>
+      </section>
     );
   }
 
   const tapButton = "w-full select-none rounded-2xl py-8 text-3xl font-black transition-transform active:scale-95 disabled:opacity-50";
   return (
-    <div className="w-full max-w-sm rounded-2xl border border-line bg-white/5 p-3">
+    <div className="w-full rounded-2xl border border-line bg-white/5 p-3">
       <div className="mb-2 text-sm font-semibold">
         {info.emoji} {info.name}
       </div>
@@ -82,9 +90,7 @@ export function MiniPad({ view, mini, emit, now }: { view: GameView; mini: MiniV
           <div className="money text-5xl">{Math.max(1, Math.ceil((left ?? 0) / 1000))}</div>
           <div className="my-2 text-sm text-white/70">{info.how}</div>
           {mySide && <div className="mb-2 font-bold" style={{ color: mySide.color }}>You are on the {mySide.name} side</div>}
-          <button type="button" className="btn-ghost w-full py-3" onClick={() => void send({ n: 1 })}>
-            I&apos;m in {info.emoji}
-          </button>
+          <div className="text-sm font-semibold text-gold">Get ready {info.emoji}</div>
         </>
       )}
 

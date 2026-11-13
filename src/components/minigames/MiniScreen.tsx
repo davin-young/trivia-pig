@@ -97,7 +97,7 @@ export function MiniScreen({ view, round, now }: { view: GameView; round: MiniRo
         <div className="min-w-0 flex-1 truncate text-[2.2vmin] text-white/80">
           {round.phase === "countdown" && (
             <>
-              Starts in <span className="money text-[3.4vmin] text-gold">{Math.max(1, Math.ceil((left ?? 0) / 1000))}</span>. Tap “I&apos;m in” on your phone! {info.how}
+              Starts in <span className="money text-[3.4vmin] text-gold">{Math.max(1, Math.ceil((left ?? 0) / 1000))}</span>. Phones ready! {info.how}
             </>
           )}
           {round.phase === "running" && info.how}
