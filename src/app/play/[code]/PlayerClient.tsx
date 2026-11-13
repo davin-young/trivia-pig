@@ -225,7 +225,7 @@ function JoinForm({ view, emit, code, rejoinName }: { view: GameView; emit: Emit
   const [name, setName] = useState(rejoinName ?? "");
   const [drawing, setDrawing] = useState<Drawing | null>(null);
   const [avatar, setAvatar] = useState<Drawing | null>(null);
-  const [showAvatar, setShowAvatar] = useState(false);
+  const [lookTab, setLookTab] = useState<"name" | "face">("name");
   const [teamId, setTeamId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -241,7 +241,6 @@ function JoinForm({ view, emit, code, rejoinName }: { view: GameView; emit: Emit
       setName((n) => n || p.name);
       setDrawing(p.signature);
       setAvatar(p.avatar);
-      if (p.avatar) setShowAvatar(true);
       setSaved({ signature: p.signature, avatar: p.avatar });
     });
     return () => {
@@ -336,10 +335,12 @@ function JoinForm({ view, emit, code, rejoinName }: { view: GameView; emit: Emit
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-xl flex-col gap-4 p-4">
-      <div className="text-center">
-        <div className="text-sm text-white/50">Joining</div>
-        <h1 className="cat-text text-3xl">{view.title}</h1>
-        {!viaWatch && <div className="money text-xl tracking-widest">{code}</div>}
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-xs uppercase tracking-wide text-white/50">Joining</div>
+          <h1 className="cat-text truncate text-2xl">{view.title}</h1>
+        </div>
+        {!viaWatch && <div className="money shrink-0 rounded-lg bg-white/5 px-2 py-1 text-lg tracking-widest">{code}</div>}
       </div>
       {(closed || asWatcher || viaWatch) && !rejoinName ? (
         <>
@@ -373,30 +374,28 @@ function JoinForm({ view, emit, code, rejoinName }: { view: GameView; emit: Emit
           {seatPicker}
           {nameField}
           <div>
-            <div className="mb-1 flex items-baseline justify-between">
-              <span className="text-sm text-white/70">Sign your name ✍️</span>
-              <span className="text-xs text-white/40">optional — shown on the big screen</span>
-            </div>
-            <DrawingPad key={saved ? "saved" : "new"} width={NAME_CANVAS.w} height={NAME_CANVAS.h} multiColor={view.settings.multiColor} initial={saved?.signature} onChange={setDrawing} placeholder="Draw your name here" />
-          </div>
-          {view.settings.avatars &&
-            (showAvatar ? (
-              <div>
-                <div className="mb-1 flex items-baseline justify-between">
-                  <span className="text-sm text-white/70">Doodle yourself 🎨</span>
-                  <button type="button" className="text-xs text-white/50 underline" onClick={() => { setShowAvatar(false); setAvatar(null); }}>
-                    Skip it
-                  </button>
-                </div>
-                <div className="mx-auto max-w-[16rem]">
-                  <DrawingPad key={saved ? "saved" : "new"} width={AVATAR_CANVAS.w} height={AVATAR_CANVAS.h} multiColor={view.settings.multiColor} initial={saved?.avatar} onChange={setAvatar} placeholder="A face, a pig, anything" />
-                </div>
+            {view.settings.avatars && (
+              <div className="mb-2 grid grid-cols-2 gap-1 rounded-xl bg-white/5 p-1" role="tablist">
+                {(["name", "face"] as const).map((t) => {
+                  const d = t === "name" ? drawing : avatar;
+                  return (
+                    <button key={t} type="button" role="tab" aria-selected={lookTab === t} className={`rounded-lg py-2 text-sm font-semibold ${lookTab === t ? "bg-gold text-black" : "text-white/70"}`} onClick={() => setLookTab(t)}>
+                      {t === "name" ? "✍️ Sign your name" : "🎨 Draw your face"}
+                      {d && !isEmptyDrawing(d) ? " ✓" : ""}
+                    </button>
+                  );
+                })}
               </div>
+            )}
+            {lookTab === "name" || !view.settings.avatars ? (
+              <DrawingPad key={`name-${saved ? "s" : "n"}`} width={NAME_CANVAS.w} height={NAME_CANVAS.h} multiColor={view.settings.multiColor} initial={drawing} onChange={setDrawing} placeholder="Draw your name here" />
             ) : (
-              <button type="button" className="btn-ghost" onClick={() => setShowAvatar(true)}>
-                🎨 Add a doodle avatar (optional)
-              </button>
-            ))}
+              <div className="mx-auto max-w-[17rem]">
+                <DrawingPad key={`face-${saved ? "s" : "n"}`} width={AVATAR_CANVAS.w} height={AVATAR_CANVAS.h} multiColor={view.settings.multiColor} initial={avatar} onChange={setAvatar} placeholder="A face, a pig, anything" />
+              </div>
+            )}
+            <div className="mt-1 text-center text-xs text-white/40">Optional. Shown on the big screen.</div>
+          </div>
           {view.settings.familyMode && <p className="text-xs text-white/50">Family mode is on: the host approves drawings before they appear on the big screen.</p>}
           {view.settings.mode === "team" && view.teams.length > 0 && (
             <div>
@@ -426,9 +425,12 @@ function JoinForm({ view, emit, code, rejoinName }: { view: GameView; emit: Emit
             </label>
             <Link href="/player" className="shrink-0 underline underline-offset-2">{saved ? "My player card" : "What's this?"}</Link>
           </div>
-          <button className="btn-primary py-4 text-xl" disabled={busy || !name.trim()} onClick={() => submit(false)}>
-            {busy ? "Joining…" : rejoinName ? "Rejoin game" : "Join game"}
-          </button>
+          {/* Always in reach: the button stays at the bottom of the screen while the page scrolls. */}
+          <div className="sticky bottom-0 z-10 -mx-4 bg-gradient-to-t from-[var(--ui-bg)] from-70% to-transparent px-4 pb-3 pt-5">
+            <button className="btn-primary w-full py-4 text-xl" disabled={busy || !name.trim()} onClick={() => submit(false)}>
+              {busy ? "Joining…" : rejoinName ? "Rejoin game" : "Join game"}
+            </button>
+          </div>
           {canWatch && !rejoinName && (
             <button type="button" className="text-sm text-white/60 underline disabled:opacity-40" disabled={busy || !name.trim()} onClick={() => submit(true)}>
               Just watching? Join the audience instead
@@ -877,7 +879,7 @@ function Buzzer({ view, emit, now, onFlash }: { view: GameView; emit: Emit; now:
       {c && !c.dailyDouble && (
         <div className="rounded-xl bg-[var(--board)] p-3 text-center">
           <div className="text-xs uppercase text-white/60">{c.category} · ${c.value}</div>
-          {c.stage === "revealed" ? <div className="clue-text mt-1 text-lg text-gold">{c.answer}</div> : <div className="mt-1 text-sm text-white/80">{c.text}</div>}
+          {c.stage === "revealed" ? <div className="clue-text mt-1 text-lg text-gold">{c.answer}</div> : <div className="mt-1 text-base text-white/90">{c.text}</div>}
         </div>
       )}
       {view.timer && c?.answering && <TimerBar startedAt={view.timer.startedAt} endsAt={view.timer.endsAt} now={now} />}
@@ -895,7 +897,7 @@ function Buzzer({ view, emit, now, onFlash }: { view: GameView; emit: Emit; now:
         onPointerUp={() => setPressed(false)}
         onPointerLeave={() => setPressed(false)}
         onContextMenu={(e) => e.preventDefault()}
-        className={`flex min-h-[50vh] flex-1 items-center justify-center rounded-[2rem] text-center text-4xl font-black uppercase transition-transform duration-75 select-none [touch-action:manipulation] [-webkit-touch-callout:none] ${tone} ${pressed ? "scale-95" : ""}`}
+        className={`flex min-h-[50vh] flex-1 items-center justify-center rounded-[2rem] border-4 border-black/25 text-center text-4xl font-black uppercase transition-transform duration-75 select-none [touch-action:manipulation] [-webkit-touch-callout:none] ${tone} ${pressed ? "translate-y-1 scale-[0.97] shadow-none" : "shadow-[inset_0_-0.7rem_0_rgba(0,0,0,0.28),inset_0_0.35rem_0_rgba(255,255,255,0.16)]"}`}
       >
         <span className="px-6">{label}</span>
       </button>

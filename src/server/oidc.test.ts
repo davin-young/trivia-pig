@@ -27,7 +27,8 @@ describe("login state cookie", () => {
     const [data, mac] = packed.split(".");
     const forged = Buffer.from(JSON.stringify({ ...p, next: "//evil.example" })).toString("base64url");
     expect(unpackPending(`${forged}.${mac}`)).toBeNull();
-    expect(unpackPending(`${data}.x${mac.slice(1)}`)).toBeNull();
+    // Change the first character to one it is not (a fixed "x" left the cookie untouched one time in 64).
+    expect(unpackPending(`${data}.${mac[0] === "x" ? "y" : "x"}${mac.slice(1)}`)).toBeNull();
     expect(unpackPending(packPending({ ...p, exp: Date.now() - 1 }))).toBeNull();
     expect(unpackPending(undefined)).toBeNull();
   });
