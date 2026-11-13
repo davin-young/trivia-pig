@@ -52,6 +52,8 @@ export interface MiniX {
   /** Who is still in, and who is out (in the order they went out). */
   alive?: string[];
   gone?: string[];
+  /** Who has already chosen, written, voted or guessed in this step (never what they chose). */
+  ready?: string[];
   // hot potato
   holder?: string | null;
   // mud fight
@@ -79,6 +81,8 @@ export interface MiniX {
   values?: { id: string; value: number }[];
   sideNames?: [string, string];
   counts?: [number, number];
+  /** Split the room, once it is over: the side each player picked. */
+  picks?: Record<string, 0 | 1>;
   // copy the pattern
   seq?: number[];
   shownAt?: number;

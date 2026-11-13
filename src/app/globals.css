@@ -261,3 +261,158 @@ button:disabled {
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
+/* ---------------------------------------------------------------- lobby game pigs */
+@keyframes pig-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-0.9vmin);
+  }
+}
+@keyframes pig-hop {
+  0% {
+    transform: translateY(0) scale(1, 1);
+  }
+  30% {
+    transform: translateY(-2.4vmin) scale(0.94, 1.08);
+  }
+  60% {
+    transform: translateY(0) scale(1.1, 0.88);
+  }
+  100% {
+    transform: none;
+  }
+}
+@keyframes pig-panic {
+  0%,
+  100% {
+    transform: translateX(-0.35vmin) rotate(-5deg);
+  }
+  50% {
+    transform: translateX(0.35vmin) rotate(5deg);
+  }
+}
+@keyframes mud-fly {
+  0% {
+    transform: translate(0, 0) scale(0.5);
+    opacity: 1;
+  }
+  50% {
+    transform: translate(calc(var(--dx) * 0.5), calc(var(--dy) * 0.5 - 7vmin)) scale(1.3);
+    opacity: 1;
+  }
+  92% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(var(--dx), var(--dy)) scale(1.7);
+    opacity: 0;
+  }
+}
+@keyframes late-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.2);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.3);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@keyframes bomb-wiggle {
+  0%,
+  100% {
+    transform: rotate(-14deg) scale(1);
+  }
+  50% {
+    transform: rotate(14deg) scale(1.14);
+  }
+}
+@keyframes boom {
+  0% {
+    transform: scale(0.3);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(2.6);
+    opacity: 0;
+  }
+}
+.pig-body {
+  transition: transform 0.2s ease-out, filter 0.3s;
+}
+.pig-bob .pig-body {
+  animation: pig-bob 1.5s ease-in-out infinite;
+  animation-delay: var(--pig-delay, 0s);
+}
+.pig-hop .pig-body {
+  animation: pig-hop 0.55s ease-out;
+}
+.pig-panic .pig-body {
+  animation: pig-panic 0.16s linear infinite;
+}
+.pig-duck .pig-body {
+  transform: translateY(24%) scale(1.18, 0.58);
+}
+.pig-out .pig-body {
+  transform: rotate(-16deg);
+  filter: grayscale(0.6) brightness(0.75);
+}
+.mud-ball {
+  border-radius: 9999px;
+  background: radial-gradient(circle at 35% 30%, #a8743d, #5b3a1a 75%);
+  animation: mud-fly 0.8s cubic-bezier(0.4, 0, 0.6, 1) both;
+}
+.mud-cover {
+  border-radius: 9999px;
+  background: radial-gradient(circle at 40% 35%, #8a5a2b, #5b3a1a 70%);
+  opacity: 0.85;
+}
+.late-pop {
+  animation: late-pop 0.35s ease-out 0.85s both;
+}
+.mud-cover.late-pop {
+  animation-name: mud-land;
+}
+@keyframes mud-land {
+  0% {
+    opacity: 0;
+    transform: scale(0.2);
+  }
+  60% {
+    opacity: 0.85;
+    transform: scale(1.3);
+  }
+  100% {
+    opacity: 0.85;
+    transform: scale(1);
+  }
+}
+.bomb {
+  animation: bomb-wiggle 0.3s ease-in-out infinite;
+}
+.boom {
+  animation: boom 0.7s ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pig-bob .pig-body,
+  .pig-hop .pig-body,
+  .pig-panic .pig-body,
+  .bomb {
+    animation: none;
+  }
+  .mud-ball,
+  .boom {
+    display: none;
+  }
+  .late-pop {
+    animation: none;
+  }
+}
