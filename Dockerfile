@@ -3,7 +3,7 @@
 
 # The Node image is pinned by digest so a re-pushed tag cannot change what ships.
 # To update: docker buildx imagetools inspect node:22-bookworm-slim, then replace both digests.
-FROM node:22-bookworm-slim@sha256:18052396bf1d0c6e0a8c58181b5c1457da19409efbd5032a3f4d86974e74d13c AS base
+FROM node:22-bookworm-slim@sha256:e9f565d32859f0cbfb52125eafe8be39390f24dac302dc3cdf566e8ba3ab21ee AS base
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
@@ -31,7 +31,7 @@ RUN npm run build && npm prune --omit=dev --ignore-scripts && npx prisma generat
 # ---- runtime -------------------------------------------------------------
 # Starts from the pinned image itself (not the "base" stage) so the runtime contains only
 # what it needs and scanners can see exactly which image ships.
-FROM node:22-bookworm-slim@sha256:18052396bf1d0c6e0a8c58181b5c1457da19409efbd5032a3f4d86974e74d13c AS runner
+FROM node:22-bookworm-slim@sha256:e9f565d32859f0cbfb52125eafe8be39390f24dac302dc3cdf566e8ba3ab21ee AS runner
 # npm, npx, corepack and yarn ship with the Node image but nothing runs them at runtime (the
 # entrypoint calls node directly), so they are removed: less to patch, less for an attacker to use.
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates tini \
