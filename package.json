@@ -22,16 +22,16 @@
     "db:studio": "prisma studio"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^1.8.0",
-    "@aws-sdk/client-s3": "^3.1166.0",
+    "@anthropic-ai/sdk": "^1.10.0",
+    "@aws-sdk/client-s3": "^3.1172.0",
     "@prisma/adapter-pg": "^7.10.1",
     "@prisma/client": "^7.10.1",
     "bcryptjs": "^3.0.3",
     "canvas-confetti": "^1.9.4",
     "nanoid": "^6.0.2",
     "next": "^16.4.6",
-    "nodemailer": "^10.5.0",
-    "openid-client": "^6.8.9",
+    "nodemailer": "^10.6.0",
+    "openid-client": "^6.9.0",
     "perfect-freehand": "^1.2.3",
     "pg": "^8.23.1",
     "prisma": "^7.10.1",
@@ -53,13 +53,13 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "esbuild": "^0.28.2",
-    "eslint": "^10.14.0",
+    "eslint": "^10.15.0",
     "eslint-config-next": "^16.4.6",
-    "fast-check": "^4.10.2",
-    "postcss": "^8.5.32",
+    "fast-check": "^4.10.3",
+    "postcss": "^8.5.33",
     "tailwindcss": "^4.3.5",
     "typescript": "6.0",
-    "vitest": "^5.1.0"
+    "vitest": "^5.1.1"
   },
   "allowScripts": {
     "@prisma/engines@7.10.1": true,
